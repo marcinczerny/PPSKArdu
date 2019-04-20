@@ -1,17 +1,35 @@
-
+#pragma region includes
+#include <Fsm.h>
+#include <Arduino_FreeRTOS.h>
+#include <croutine.h>
+#include <event_groups.h>
+#include <FreeRTOSConfig.h>
+#include <FreeRTOSVariant.h>
+#include <list.h>
+#include <message_buffer.h>
+#include <mpu_wrappers.h>
+#include <portable.h>
+#include <portmacro.h>
+#include <projdefs.h>
+#include <queue.h>
+#include <semphr.h>
+#include <stack_macros.h>
+#include <stream_buffer.h>
+#include <task.h>
+#include <timers.h>
 #include <Servo.h>
+#include <PCF8574.h>
+#include <helper_3dmath.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+//#include <MPU6050_6Axis_Motio"/home/marcin/Pobrane/arduino-1.8.9/tools/**",
+               // "/home/marcin/Pobrane/arduino-1.8.9/hardware/arduino/avr/**",nApps20.h>
 
-//#include <.Libraries/pcf8574/PCF8574/PCF8574.h>
-#include <./PCF8574.h>
-#include <Libraries/i2cdevlib-master/Arduino/MPU6050/helper_3dmath.h>
-#include <ibraries/i2cdevlib-master/Arduino/MPU6050/MPU6050_6Axis_MotionApps20.h>
-#include <Libraries/i2cdevlib-master/Arduino/I2Cdev/I2Cdev.h>
-#include <Libraries/NewPing_v1.9.1/NewPing/src/NewPing.h>
+#include <I2Cdev.h>
+#include <NewPing.h>
 #include <Wire.h>
-#include <avr/iousbxx2.h>
+#pragma endregion includes
 
-
-
+#pragma region defines
 #define trigPin A2
 #define echoPin A1
 #define trigPinBack A0
@@ -27,7 +45,9 @@
 #define expanderLeftUpWheel 0
 #define expanderRightUpWheel 1
 #define UpCenter 2
+#pragma endregion defines
 
+#pragma region globals
 PCF8574 expander;
 MPU6050 mpu;
 Servo left;
@@ -35,6 +55,7 @@ Servo right;
 int rightStop = 111;
 int leftStop = 84;
 NewPing sonar(trigPin, echoPin, MAX_DISTANCE);
+#pragma endregion globals
 
 // uncomment "OUTPUT_READABLE_QUATERNION" if you want to see the actual
 // quaternion components in a [w, x, y, z] format (not best for parsing
