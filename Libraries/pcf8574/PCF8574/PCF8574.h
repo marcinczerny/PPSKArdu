@@ -40,11 +40,11 @@
 #include "Arduino.h"
 #define I2CWRITE(x) Wire.write(x)
 #define I2CREAD() Wire.read()
-#else
-#include "WProgram.h"
-#define I2CWRITE(x) Wire.send(x)
-#define I2CREAD() Wire.receive()
-#define INPUT_PULLUP 2
+//#else
+//#include "WProgram.h"
+//#define I2CWRITE(x) Wire.send(x)
+//#define I2CREAD() Wire.receive()
+//#define INPUT_PULLUP 2
 #endif
 
 /**

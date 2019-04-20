@@ -1,0 +1,4 @@
+{
+    "sketch": "PPSKArdu.ino",
+    "board": "arduino:avr:uno"
+}
