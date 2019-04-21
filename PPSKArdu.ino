@@ -87,7 +87,7 @@ NewPing sonar(trigPin, echoPin, MAX_DISTANCE);
 // components with gravity removed and adjusted for the world frame of
 // reference (yaw is relative to initial orientation, since no magnetometer
 // is present in this case). Could be quite handy in some cases.
-//#define OUTPUT_READABLE_WORLDACCEL
+#define OUTPUT_READABLE_WORLDACCEL
 
 // uncomment "OUTPUT_TEAPOT" if you want output that matches the
 // format used for the InvenSense teapot demo
@@ -117,9 +117,14 @@ float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 // packet structure for InvenSense teapot demo
-uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
-
-
+//uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
+#pragma region Fsm
+State state_movement(on_movement_enter, NULL, &on_movement_exit);
+State state_initialize(on_initialize_enter, NULL, &on_initialize_exit);
+State state_break(on_break_enter,NULL,&on_break_exit);
+State state_hit
+Fsm fsm(&state_initialize);
+#pragma endregion Fsm
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
