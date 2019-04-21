@@ -119,11 +119,118 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 // packet structure for InvenSense teapot demo
 //uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 #pragma region Fsm
-State state_movement(on_movement_enter, NULL, &on_movement_exit);
-State state_initialize(on_initialize_enter, NULL, &on_initialize_exit);
-State state_break(on_break_enter,NULL,&on_break_exit);
-State state_hit
+#define FSM_STOP 1
+#define FSM_MOVEMENT 2
+#define FSM_OBSTACLE 3
+#define FSM_STAIRS 4
+
+State state_movement(&on_movement_enter, &on_movement, &on_movement_exit);
+State state_initialize(&on_initialize_enter, &on_initialize, &on_initialize_exit);
+State state_stop(&on_stop_enter,&on_stop,&on_stop_exit);
+State state_obstacle_detected(&on_obstacle_detected_enter,&on_obstacle,&on_obstacle_detected_exit);
+State state_stairs_detected(&on_stairs_detected_enter,&on_stairs_detected,&on_stairs_detected_exit);
+
+
 Fsm fsm(&state_initialize);
+void on_movement_enter(){
+    Serial.println("on_movement_enter");
+}
+void on_movement(){
+    if(Serial.available()>0){
+    byte readChar = Serial.read();
+        if (readChar = 'o'){
+            fsm.trigger(FSM_STOP);
+        }
+    }
+    // bool noFloorDetected = false;
+    // for(int i = 1;i<8;i++){
+    //     if(expander.digitalRead(i)==LOW){
+    //         Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
+    //         Serial.println(i);
+    //         noFloorDetected = true;
+    //     }
+    // }
+    // if(noFloorDetected){
+    //     fsm.trigger(FSM_STAIRS);
+    // }
+    bool obstacleDetected = false;
+    for(int i = UpLeft;i<=BackLeft;i++){
+        if(digitalRead(i)==LOW){
+            Serial.print("Wykryto zderzenie z przeszkoda na czujniku nr ");
+            Serial.println(i);
+            obstacleDetected = true;
+        }
+    }
+    if(obstacleDetected == true){
+        fsm.trigger(FSM_OBSTACLE);
+    }  
+}
+void on_movement_exit(){
+    Serial.println("on_movement_exit");
+}
+void on_initialize_enter(){
+    Serial.println("on_initialize_enter");
+}
+void on_initialize_exit(){
+    Serial.println("on_initialize_exit");
+}
+void on_initialize(){
+    delay(5000);
+    fsm.trigger(FSM_MOVEMENT);
+}
+void on_stop_enter(){
+    Serial.println("on_stop_enter");
+}
+void on_stop(){
+    if(Serial.available()>0){
+    byte readChar = Serial.read();
+        if (readChar = 'o'){
+            fsm.trigger(FSM_MOVEMENT);
+        }
+    }
+}
+void on_stop_exit(){
+    Serial.println("on_stop_exit");
+}
+
+void on_obstacle_detected_enter(){
+    Serial.println("on_obstacle_detected_enter");
+}
+void on_obstacle(){
+    bool obstacleDetected = false;
+    for(int i = UpLeft;i<=BackLeft;i++){
+        if(digitalRead(i)==LOW){
+            obstacleDetected = true;
+        }
+    }
+    if(obstacleDetected == false){
+        fsm.trigger(FSM_OBSTACLE);
+    }  
+}
+void on_obstacle_detected_exit(){
+    Serial.println("on_obstacle_detected_exit");
+}
+void on_stairs_detected(){
+    bool noFloorDetected = false;
+    for(int i = 1;i<8;i++){
+        if(expander.digitalRead(i)==LOW){
+            noFloorDetected = true;
+        }
+    }
+    if(!noFloorDetected){
+        fsm.trigger(FSM_STAIRS);
+    }
+}
+void on_stairs_detected_enter(){
+    Serial.println("on_stairs_detected_enter");
+}
+void on_stairs_detected_exit(){
+    Serial.println("on_stairs_detected_exit");
+}
+
+
+
+
 #pragma endregion Fsm
 
 // ================================================================
@@ -139,6 +246,16 @@ void dmpDataReady() {
 void setup() {
 	// join I2C bus (I2Cdev library doesn't do this automatically)
     Serial.begin(115200);
+    fsm.add_transition(&state_initialize, &state_movement,FSM_MOVEMENT,NULL);
+    fsm.add_transition(&state_movement,&state_stop,FSM_STOP,NULL);
+    fsm.add_transition(&state_movement,&state_obstacle_detected,FSM_OBSTACLE,NULL);
+    fsm.add_transition(&state_movement,&state_stairs_detected,FSM_STAIRS,NULL);
+    fsm.add_transition(&state_stop,&state_movement,FSM_MOVEMENT,NULL);
+    fsm.add_transition(&state_stop,&state_stairs_detected,FSM_OBSTACLE,NULL);
+    fsm.add_transition(&state_stop,&state_obstacle_detected,FSM_OBSTACLE,NULL);
+    fsm.add_transition(&state_stairs_detected,&state_stop,FSM_STAIRS,NULL);
+    fsm.add_transition(&state_obstacle_detected,&state_stop,FSM_OBSTACLE,NULL);
+
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
         Wire.begin();
         Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
@@ -230,138 +347,141 @@ left.write(leftStop);//stop signal
 }
 
 void loop(){
-if (!dmpReady) return;
+//Lets start finite state machine
+fsm.run_machine();
 
-    // wait for MPU interrupt or extra packet(s) available
-    while (!mpuInterrupt && fifoCount < packetSize) {
-        if (mpuInterrupt && fifoCount < packetSize) {
-          // try to get out of the infinite loop 
-          fifoCount = mpu.getFIFOCount();
-        }  
-        // other program behavior stuff here
-        // .
-        // .
-        // .
-        // if you are really paranoid you can frequently test in between other
-        // stuff to see if mpuInterrupt is true, and if so, "break;" from the
-        // while() loop to immediately process the MPU data
-        // .
-        // .
-        // .
-    }
+// if (!dmpReady) return;
 
-    // reset interrupt flag and get INT_STATUS byte
-    mpuInterrupt = false;
-    mpuIntStatus = mpu.getIntStatus();
+//     // wait for MPU interrupt or extra packet(s) available
+//     while (!mpuInterrupt && fifoCount < packetSize) {
+//         if (mpuInterrupt && fifoCount < packetSize) {
+//           // try to get out of the infinite loop 
+//           fifoCount = mpu.getFIFOCount();
+//         }  
+//         // other program behavior stuff here
+//         // .
+//         // .
+//         // .
+//         // if you are really paranoid you can frequently test in between other
+//         // stuff to see if mpuInterrupt is true, and if so, "break;" from the
+//         // while() loop to immediately process the MPU data
+//         // .
+//         // .
+//         // .
+//     }
 
-    // get current FIFO count
-    fifoCount = mpu.getFIFOCount();
+//     // reset interrupt flag and get INT_STATUS byte
+//     mpuInterrupt = false;
+//     mpuIntStatus = mpu.getIntStatus();
 
-    // check for overflow (this should never happen unless our code is too inefficient)
-    if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
-        // reset so we can continue cleanly
-        mpu.resetFIFO();
-        fifoCount = mpu.getFIFOCount();
-        Serial.println(F("FIFO overflow!"));
+//     // get current FIFO count
+//     fifoCount = mpu.getFIFOCount();
 
-    // otherwise, check for DMP data ready interrupt (this should happen frequently)
-    } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
-        // wait for correct available data length, should be a VERY short wait
-        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+//     // check for overflow (this should never happen unless our code is too inefficient)
+//     if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
+//         // reset so we can continue cleanly
+//         mpu.resetFIFO();
+//         fifoCount = mpu.getFIFOCount();
+//         Serial.println(F("FIFO overflow!"));
 
-        // read a packet from FIFO
-        mpu.getFIFOBytes(fifoBuffer, packetSize);
+//     // otherwise, check for DMP data ready interrupt (this should happen frequently)
+//     } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
+//         // wait for correct available data length, should be a VERY short wait
+//         while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+
+//         // read a packet from FIFO
+//         mpu.getFIFOBytes(fifoBuffer, packetSize);
         
-        // track FIFO count here in case there is > 1 packet available
-        // (this lets us immediately read more without waiting for an interrupt)
-        fifoCount -= packetSize;
+//         // track FIFO count here in case there is > 1 packet available
+//         // (this lets us immediately read more without waiting for an interrupt)
+//         fifoCount -= packetSize;
 
-        #ifdef OUTPUT_READABLE_QUATERNION
-            // display quaternion values in easy matrix form: w x y z
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            Serial.print("quat\t");
-            Serial.print(q.w);
-            Serial.print("\t");
-            Serial.print(q.x);
-            Serial.print("\t");
-            Serial.print(q.y);
-            Serial.print("\t");
-            Serial.println(q.z);
-        #endif
+//         #ifdef OUTPUT_READABLE_QUATERNION
+//             // display quaternion values in easy matrix form: w x y z
+//             mpu.dmpGetQuaternion(&q, fifoBuffer);
+//             Serial.print("quat\t");
+//             Serial.print(q.w);
+//             Serial.print("\t");
+//             Serial.print(q.x);
+//             Serial.print("\t");
+//             Serial.print(q.y);
+//             Serial.print("\t");
+//             Serial.println(q.z);
+//         #endif
 
-        #ifdef OUTPUT_READABLE_EULER
-            // display Euler angles in degrees
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetEuler(euler, &q);
-            Serial.print("euler\t");
-            Serial.print(euler[0] * 180/M_PI);
-            Serial.print("\t");
-            Serial.print(euler[1] * 180/M_PI);
-            Serial.print("\t");
-            Serial.println(euler[2] * 180/M_PI);
-        #endif
+//         #ifdef OUTPUT_READABLE_EULER
+//             // display Euler angles in degrees
+//             mpu.dmpGetQuaternion(&q, fifoBuffer);
+//             mpu.dmpGetEuler(euler, &q);
+//             Serial.print("euler\t");
+//             Serial.print(euler[0] * 180/M_PI);
+//             Serial.print("\t");
+//             Serial.print(euler[1] * 180/M_PI);
+//             Serial.print("\t");
+//             Serial.println(euler[2] * 180/M_PI);
+//         #endif
 
-        #ifdef OUTPUT_READABLE_YAWPITCHROLL
-            // display Euler angles in degrees
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            Serial.print("ypr\t");
-            Serial.print(ypr[0] * 180/M_PI);
-            Serial.print("\t");
-            Serial.print(ypr[1] * 180/M_PI);
-            Serial.print("\t");
-            Serial.println(ypr[2] * 180/M_PI);
-        #endif
+//         #ifdef OUTPUT_READABLE_YAWPITCHROLL
+//             // display Euler angles in degrees
+//             mpu.dmpGetQuaternion(&q, fifoBuffer);
+//             mpu.dmpGetGravity(&gravity, &q);
+//             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+//             Serial.print("ypr\t");
+//             Serial.print(ypr[0] * 180/M_PI);
+//             Serial.print("\t");
+//             Serial.print(ypr[1] * 180/M_PI);
+//             Serial.print("\t");
+//             Serial.println(ypr[2] * 180/M_PI);
+//         #endif
 
-        #ifdef OUTPUT_READABLE_REALACCEL
-            // display real acceleration, adjusted to remove gravity
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-            Serial.print("areal\t");
-            Serial.print(aaReal.x);
-            Serial.print("\t");
-            Serial.print(aaReal.y);
-            Serial.print("\t");
-            Serial.println(aaReal.z);
-        #endif
+//         #ifdef OUTPUT_READABLE_REALACCEL
+//             // display real acceleration, adjusted to remove gravity
+//             mpu.dmpGetQuaternion(&q, fifoBuffer);
+//             mpu.dmpGetAccel(&aa, fifoBuffer);
+//             mpu.dmpGetGravity(&gravity, &q);
+//             mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+//             Serial.print("areal\t");
+//             Serial.print(aaReal.x);
+//             Serial.print("\t");
+//             Serial.print(aaReal.y);
+//             Serial.print("\t");
+//             Serial.println(aaReal.z);
+//         #endif
 
-        #ifdef OUTPUT_READABLE_WORLDACCEL
-            // display initial world-frame acceleration, adjusted to remove gravity
-            // and rotated based on known orientation from quaternion
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-            mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-            Serial.print("aworld\t");
-            Serial.print(aaWorld.x);
-            Serial.print("\t");
-            Serial.print(aaWorld.y);
-            Serial.print("\t");
-            Serial.println(aaWorld.z);
-        #endif
+//         #ifdef OUTPUT_READABLE_WORLDACCEL
+//             // display initial world-frame acceleration, adjusted to remove gravity
+//             // and rotated based on known orientation from quaternion
+//             mpu.dmpGetQuaternion(&q, fifoBuffer);
+//             mpu.dmpGetAccel(&aa, fifoBuffer);
+//             mpu.dmpGetGravity(&gravity, &q);
+//             mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+//             mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
+//             Serial.print("aworld\t");
+//             Serial.print(aaWorld.x);
+//             Serial.print("\t");
+//             Serial.print(aaWorld.y);
+//             Serial.print("\t");
+//             Serial.println(aaWorld.z);
+//         #endif
     
-        #ifdef OUTPUT_TEAPOT
-            // display quaternion values in InvenSense Teapot demo format:
-            teapotPacket[2] = fifoBuffer[0];
-            teapotPacket[3] = fifoBuffer[1];
-            teapotPacket[4] = fifoBuffer[4];
-            teapotPacket[5] = fifoBuffer[5];
-            teapotPacket[6] = fifoBuffer[8];
-            teapotPacket[7] = fifoBuffer[9];
-            teapotPacket[8] = fifoBuffer[12];
-            teapotPacket[9] = fifoBuffer[13];
-            Serial.write(teapotPacket, 14);
-            teapotPacket[11]++; // packetCount, loops at 0xFF on purpose
-        #endif
+//         #ifdef OUTPUT_TEAPOT
+//             // display quaternion values in InvenSense Teapot demo format:
+//             teapotPacket[2] = fifoBuffer[0];
+//             teapotPacket[3] = fifoBuffer[1];
+//             teapotPacket[4] = fifoBuffer[4];
+//             teapotPacket[5] = fifoBuffer[5];
+//             teapotPacket[6] = fifoBuffer[8];
+//             teapotPacket[7] = fifoBuffer[9];
+//             teapotPacket[8] = fifoBuffer[12];
+//             teapotPacket[9] = fifoBuffer[13];
+//             Serial.write(teapotPacket, 14);
+//             teapotPacket[11]++; // packetCount, loops at 0xFF on purpose
+//         #endif
 
-        // blink LED to indicate activity
-        blinkState = !blinkState;
-        digitalWrite(LED_PIN, blinkState);
-	}
+//         // blink LED to indicate activity
+//         blinkState = !blinkState;
+//         digitalWrite(LED_PIN, blinkState);
+// 	}
 	
 	/*while(stopEngines == false){
     right.write(rightStop-10);
