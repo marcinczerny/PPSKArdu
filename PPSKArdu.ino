@@ -48,13 +48,15 @@
 #pragma endregion defines
 
 #pragma region globals
+unsigned long timeOfLastStateSwitch;
 PCF8574 expander;
 MPU6050 mpu;
 Servo left;
 Servo right; 
 int rightStop = 111;
-int leftStop = 84;
-NewPing sonar(trigPin, echoPin, MAX_DISTANCE);
+int leftStop = 81;
+NewPing sonarBack(trigPinBack, echoPinBack, MAX_DISTANCE);
+NewPing sonarFront(trigPinFront,echoPinFront,MAX_DISTANCE);
 #pragma endregion globals
 
 // uncomment "OUTPUT_READABLE_QUATERNION" if you want to see the actual
@@ -136,23 +138,26 @@ void on_movement_enter(){
     Serial.println("on_movement_enter");
 }
 void on_movement(){
+    digitalWrite(8,LOW);
     if(Serial.available()>0){
     byte readChar = Serial.read();
         if (readChar = 'o'){
             fsm.trigger(FSM_STOP);
+
         }
     }
-    // bool noFloorDetected = false;
-    // for(int i = 1;i<8;i++){
-    //     if(expander.digitalRead(i)==LOW){
-    //         Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
-    //         Serial.println(i);
-    //         noFloorDetected = true;
-    //     }
-    // }
-    // if(noFloorDetected){
-    //     fsm.trigger(FSM_STAIRS);
-    // }
+    bool noFloorDetected = false;
+    for(int i = 0;i<7;i++){
+        if(expander.digitalRead(i)==HIGH){
+            Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
+            Serial.println(i);
+            noFloorDetected = true;
+        }
+    }
+    if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
+        fsm.trigger(FSM_STAIRS);
+    }
     bool obstacleDetected = false;
     for(int i = UpLeft;i<=BackLeft;i++){
         if(digitalRead(i)==LOW){
@@ -161,7 +166,8 @@ void on_movement(){
             obstacleDetected = true;
         }
     }
-    if(obstacleDetected == true){
+    if(obstacleDetected == true && millis() - timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
         fsm.trigger(FSM_OBSTACLE);
     }  
 }
@@ -169,6 +175,7 @@ void on_movement_exit(){
     Serial.println("on_movement_exit");
 }
 void on_initialize_enter(){
+    timeOfLastStateSwitch = millis();
     Serial.println("on_initialize_enter");
 }
 void on_initialize_exit(){
@@ -179,21 +186,47 @@ void on_initialize(){
     fsm.trigger(FSM_MOVEMENT);
 }
 void on_stop_enter(){
+    stopEngines();on_stop_enter
     Serial.println("on_stop_enter");
 }
 void on_stop(){
+    boolean noFloorDetected = false;
     if(Serial.available()>0){
     byte readChar = Serial.read();
         if (readChar = 'o'){
             fsm.trigger(FSM_MOVEMENT);
         }
     }
+    for(int i = 0;i<7;i++){
+        if(expander.digitalRead(i)==HIGH){
+            Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
+            Serial.println(i);
+            noFloorDetected = true;
+        }
+    }
+    if(noFloorDetected && millis() - timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
+        fsm.trigger(FSM_STAIRS);
+    }
+    bool obstacleDetected = false;
+    for(int i = UpLeft;i<=BackLeft;i++){
+        if(digitalRead(i)==LOW){
+            Serial.print("Wykryto zderzenie z przeszkoda na czujniku nr ");
+            Serial.println(i);
+            obstacleDetected = true;
+        }
+    }
+    if(obstacleDetected == true && millis() - timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
+        fsm.trigger(FSM_OBSTACLE);
+    }  
 }
 void on_stop_exit(){
     Serial.println("on_stop_exit");
 }
 
 void on_obstacle_detected_enter(){
+    stopEngines();
     Serial.println("on_obstacle_detected_enter");
 }
 void on_obstacle(){
@@ -203,7 +236,8 @@ void on_obstacle(){
             obstacleDetected = true;
         }
     }
-    if(obstacleDetected == false){
+    if(obstacleDetected == false && millis()-timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
         fsm.trigger(FSM_OBSTACLE);
     }  
 }
@@ -212,16 +246,18 @@ void on_obstacle_detected_exit(){
 }
 void on_stairs_detected(){
     bool noFloorDetected = false;
-    for(int i = 1;i<8;i++){
-        if(expander.digitalRead(i)==LOW){
+    for(int i = 0;i<7;i++){
+        if(expander.digitalRead(i)==HIGH){
             noFloorDetected = true;
         }
     }
-    if(!noFloorDetected){
+    if(!noFloorDetected && millis() - timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
         fsm.trigger(FSM_STAIRS);
     }
 }
 void on_stairs_detected_enter(){
+    stopEngines();
     Serial.println("on_stairs_detected_enter");
 }
 void on_stairs_detected_exit(){
@@ -251,7 +287,7 @@ void setup() {
     fsm.add_transition(&state_movement,&state_obstacle_detected,FSM_OBSTACLE,NULL);
     fsm.add_transition(&state_movement,&state_stairs_detected,FSM_STAIRS,NULL);
     fsm.add_transition(&state_stop,&state_movement,FSM_MOVEMENT,NULL);
-    fsm.add_transition(&state_stop,&state_stairs_detected,FSM_OBSTACLE,NULL);
+    fsm.add_transition(&state_stop,&state_stairs_detected,FSM_STAIRS,NULL);
     fsm.add_transition(&state_stop,&state_obstacle_detected,FSM_OBSTACLE,NULL);
     fsm.add_transition(&state_stairs_detected,&state_stop,FSM_STAIRS,NULL);
     fsm.add_transition(&state_obstacle_detected,&state_stop,FSM_OBSTACLE,NULL);
@@ -263,85 +299,28 @@ void setup() {
         Fastwire::setup(400, true);
     #endif
 	
-      Serial.println(F("Initializing I2C devices..."));
-    mpu.initialize();
-    pinMode(INTERRUPT_PIN, INPUT);
-
-    // verify connection
-    Serial.println(F("Testing device connections..."));
-    Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
-
-    // wait for ready
-    Serial.println(F("\nSend any character to begin DMP programming and demo: "));
-    while (Serial.available() && Serial.read()); // empty buffer
-    while (!Serial.available());                 // wait for data
-    while (Serial.available() && Serial.read()); // empty buffer again
-
-    // load and configure the DMP
-    Serial.println(F("Initializing DMP..."));
-    devStatus = mpu.dmpInitialize();
-
-    // supply your own gyro offsets here, scaled for min sensitivity
-    mpu.setXGyroOffset(0);
-    mpu.setYGyroOffset(0);
-    mpu.setZGyroOffset(0);
-    mpu.setZAccelOffset(1688); // 1688 factory default for my test chip
-
-	 // make sure it worked (returns 0 if so)
-    if (devStatus == 0) {
-        // turn on the DMP, now that it's ready
-        Serial.println(F("Enabling DMP..."));
-        mpu.setDMPEnabled(true);
-
-        // enable Arduino interrupt detection
-        Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
-        Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
-        Serial.println(F(")..."));
-        attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
-        mpuIntStatus = mpu.getIntStatus();
-
-        // set our DMP Ready flag so the main loop() function knows it's okay to use it
-        Serial.println(F("DMP ready! Waiting for first interrupt..."));
-        dmpReady = true;
-
-        // get expected DMP packet size for later comparison
-        packetSize = mpu.dmpGetFIFOPacketSize();
-    } else {
-        // ERROR!
-        // 1 = initial memory load failed
-        // 2 = DMP configuration updates failed
-        // (if it's going to break, usually the code will be 1)
-        Serial.print(F("DMP Initialization failed (code "));
-        Serial.print(devStatus);
-        Serial.println(F(")"));
-		
-		 }
-
-    // configure LED for output
-    pinMode(LED_PIN, OUTPUT);
-
+    setupMPU();
   // put your setup code here, to run once:
   pinMode(6,INPUT);
   pinMode(7,INPUT);
   pinMode(4,INPUT);
   pinMode(5,INPUT);
   pinMode(8,OUTPUT);
+  
 
   expander.begin(0x20);
-  expander.pinMode(0,INPUT);
-  expander.pinMode(1,INPUT);
-  expander.pinMode (2,INPUT);
-  expander.pinMode(3,INPUT);
-  expander.pinMode(4,INPUT);
-  expander.pinMode(5,INPUT);
-  expander.pinMode(6,INPUT);
-  expander.pinMode(7,INPUT);
+  expander.pinMode(0,INPUT_PULLUP);
+  expander.pinMode(1,INPUT_PULLUP);
+  expander.pinMode(2,INPUT_PULLUP);
+  expander.pinMode(3,INPUT_PULLUP);
+  expander.pinMode(4,INPUT_PULLUP);
+  expander.pinMode(5,INPUT_PULLUP);
+  expander.pinMode(6,INPUT_PULLUP);
   
   right.attach(10, 1000, 1800); //right servo motor
   left.attach(9, 100, 1800); //l//
 
-right.write(rightStop);//stop signal
-left.write(leftStop);//stop signal
+  stopEngines();
 
   Serial.begin(115200);
 }
@@ -349,7 +328,6 @@ left.write(leftStop);//stop signal
 void loop(){
 //Lets start finite state machine
 fsm.run_machine();
-
 // if (!dmpReady) return;
 
 //     // wait for MPU interrupt or extra packet(s) available
@@ -520,4 +498,69 @@ left.write(leftStop);//stop signal
   Serial.print(uS);
   Serial.println("cm");
   }*/
+}
+void setupMPU(){
+
+      Serial.println(F("Initializing I2C devices..."));
+    mpu.initialize();
+    pinMode(INTERRUPT_PIN, INPUT);
+
+    // verify connection
+    Serial.println(F("Testing device connections..."));
+    Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
+
+    // load and configure the DMP
+    Serial.println(F("Initializing DMP..."));
+    devStatus = mpu.dmpInitialize();
+
+    // supply your own gyro offsets here, scaled for min sensitivity
+    mpu.setXGyroOffset(0);
+    mpu.setYGyroOffset(0);
+    mpu.setZGyroOffset(0);
+    mpu.setZAccelOffset(1688); // 1688 factory default for my test chip
+
+	 // make sure it worked (returns 0 if so)
+    if (devStatus == 0) {
+        // turn on the DMP, now that it's ready
+        Serial.println(F("Enabling DMP..."));
+        mpu.setDMPEnabled(true);
+
+        // enable Arduino interrupt detection
+        Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
+        Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
+        Serial.println(F(")..."));
+        attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+        mpuIntStatus = mpu.getIntStatus();
+
+        // set our DMP Ready flag so the main loop() function knows it's okay to use it
+        Serial.println(F("DMP ready! Waiting for first interrupt..."));
+        dmpReady = true;
+
+        // get expected DMP packet size for later comparison
+        packetSize = mpu.dmpGetFIFOPacketSize();
+    } else {
+        // ERROR!
+        // 1 = initial memory load failed
+        // 2 = DMP configuration updates failed
+        // (if it's going to break, usually the code will be 1)
+        Serial.print(F("DMP Initialization failed (code "));
+        Serial.print(devStatus);
+        Serial.println(F(")"));
+		
+		 }
+
+    // configure LED for output
+    pinMode(LED_PIN, OUTPUT);
+}
+void restartSonar(int echo, int trig){
+    pinMode(echo, OUTPUT);
+    delay(150);
+    digitalWrite(echo, LOW);
+    delay(150);
+    pinMode(echo, INPUT);
+    delay(150);
+}
+void stopEngines(){
+    right.write(rightStop);//stop signal
+    left.write(leftStop);//stop signal
 }
