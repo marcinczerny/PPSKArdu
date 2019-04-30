@@ -53,12 +53,22 @@ PCF8574 expander;
 MPU6050 mpu;
 Servo left;
 Servo right; 
-int rightStop = 111;
-int leftStop = 81;
+int leftStop = 111;
+int rightStop = 81;
 NewPing sonarBack(trigPinBack, echoPinBack, MAX_DISTANCE);
 NewPing sonarFront(trigPinFront,echoPinFront,MAX_DISTANCE);
+SemaphoreHandle_t xSerialSemaphore;
 #pragma endregion globals
 
+#pragma region FreeRtosTasks
+void TaskFSM(void *pvParameters);
+void TaskFrontUltasond(void *pvParameters);
+void TaskRearUltrasond(void *pvParameters);
+void TaskMTU(void *pvParameters);
+void TaskExpander(void *pvParameters);
+void TaskSwitches(void *pvParameters);
+void TaskSerialRead(void *pvParameters);
+#pragma endregion FreeRtosTasks
 // uncomment "OUTPUT_READABLE_QUATERNION" if you want to see the actual
 // quaternion components in a [w, x, y, z] format (not best for parsing
 // quaternion components in a [w, x, y, z] format (not best for parsing
@@ -139,6 +149,8 @@ void on_movement_enter(){
 }
 void on_movement(){
     digitalWrite(8,LOW);
+    left.write(leftStop + 10);
+    right.write(rightStop - 10);
     if(Serial.available()>0){
     byte readChar = Serial.read();
         if (readChar = 'o'){
@@ -146,18 +158,18 @@ void on_movement(){
 
         }
     }
-    bool noFloorDetected = false;
-    for(int i = 0;i<7;i++){
-        if(expander.digitalRead(i)==HIGH){
-            Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
-            Serial.println(i);
-            noFloorDetected = true;
-        }
-    }
-    if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
-        timeOfLastStateSwitch = millis();
-        fsm.trigger(FSM_STAIRS);
-    }
+    // bool noFloorDetected = false;
+    // for(int i = 0;i<7;i++){
+    //     if(expander.digitalRead(i)==HIGH){
+    //         Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
+    //         Serial.println(i);
+    //         noFloorDetected = true;
+    //     }
+    // }
+    // if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
+    //     timeOfLastStateSwitch = millis();
+    //     fsm.trigger(FSM_STAIRS);
+    // }
     bool obstacleDetected = false;
     for(int i = UpLeft;i<=BackLeft;i++){
         if(digitalRead(i)==LOW){
@@ -186,7 +198,7 @@ void on_initialize(){
     fsm.trigger(FSM_MOVEMENT);
 }
 void on_stop_enter(){
-    stopEngines();on_stop_enter
+    stopEngines();
     Serial.println("on_stop_enter");
 }
 void on_stop(){
@@ -282,6 +294,15 @@ void dmpDataReady() {
 void setup() {
 	// join I2C bus (I2Cdev library doesn't do this automatically)
     Serial.begin(115200);
+
+    //Serial - create mutex
+    if(xSerialSemaphore == NULL )  // Check to confirm that the Serial Semaphore has not already been created.
+    {
+        xSerialSemaphore = xSemaphoreCreateMutex();  // Create a mutex semaphore we will use to manage the Serial Port
+    if(( xSerialSemaphore ) != NULL )
+        xSemaphoreGive( ( xSerialSemaphore ) );  // Make the Serial Port available for use, by "Giving" the Semaphore.
+    } 
+
     fsm.add_transition(&state_initialize, &state_movement,FSM_MOVEMENT,NULL);
     fsm.add_transition(&state_movement,&state_stop,FSM_STOP,NULL);
     fsm.add_transition(&state_movement,&state_obstacle_detected,FSM_OBSTACLE,NULL);
@@ -296,7 +317,13 @@ void setup() {
         Wire.begin();
         Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
-        Fastwire::setup(400, true);
+        Fastwire::srestartSonar(int echo, int trig){
+    pinMode(echo, OUTPUT);
+    delay(150);
+    digitalWrite(echo, LOW);
+    delay(150);
+    pinMode(echo, INPUT);
+    delay(15etup(400, true);
     #endif
 	
     setupMPU();
@@ -317,12 +344,65 @@ void setup() {
   expander.pinMode(5,INPUT_PULLUP);
   expander.pinMode(6,INPUT_PULLUP);
   
-  right.attach(10, 1000, 1800); //right servo motor
-  left.attach(9, 100, 1800); //l//
+  left.attach(10, 1000, 1800); //right servo motor
+  right.attach(9, 100, 1800); //l//
 
   stopEngines();
 
   Serial.begin(115200);
+
+  //Create Tasks
+    xTaskCreate(
+    TaskFSM
+    ,  (const portCHAR *)"FiniteStateMachine"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+
+    xTaskCreate(
+    TaskExpander
+    ,  (const portCHAR *)"TaskExpander"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+
+    xTaskCreate(
+    TaskFrontUltasond
+    ,  (const portCHAR *)"FrontUltrasond"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+    xTaskCreate(
+    TaskRearUltrasond
+    ,  (const portCHAR *)"RearUltrasond"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  1  
+    ,  NULL );
+    xTaskCreate(
+    TaskSerialRead
+    ,  (const portCHAR *)"SerialRead"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  0  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+    xTaskCreate(
+    TaskSwitches
+    ,  (const portCHAR *)"LimitSwitches"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+    xTaskCreate(
+    TaskMTU
+    ,  (const portCHAR *)"MTU"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
 }
 
 void loop(){
@@ -564,3 +644,26 @@ void stopEngines(){
     right.write(rightStop);//stop signal
     left.write(leftStop);//stop signal
 }
+#pragma region FreeRTOSFunctions
+void TaskFSM( void *pvParameters __attribute__((unused)) )  // This is a Task.
+{
+}
+void TaskMTU(void *pvParameters __attribute__((unused))){
+
+}
+void TaskFrontUltasond( void *pvParameters __attribute__((unused)) )  // This is a Task.
+{
+}
+void TaskRearUltrasond(void *pvParameters __attribute__((unused))){
+
+}
+void TaskSerialRead( void *pvParameters __attribute__((unused)) )  // This is a Task.
+{
+}
+void TaskSwitches(void *pvParameters __attribute__((unused))){
+
+}
+void TaskExpander(void *pvParameters __attribute__((unused))){
+
+}
+#pragma endregion FreeRTOSFunctions 
