@@ -53,6 +53,7 @@ unsigned int g_RearUltraSondDistance;
 byte g_frontSonarState;
 byte g_rearSonarState;
 
+bool workingIRsensors[7];
 
 #pragma endregion globals
 
@@ -109,7 +110,7 @@ void on_movement(){
     
     bool noFloorDetected = false;
     for(int i = 0;i<7;i++){
-        if(expander.digitalRead(i)==HIGH){
+        if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
             Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
             Serial.println(i);
             noFloorDetected = true;
@@ -147,18 +148,27 @@ void on_movement_exit(){
     Serial.println("on_movement_exit");
 }
 void on_initialize_enter(){
+    for(int i = 0;i<7;i++){
+            workingIRsensors[i] = true;
+    }
     timeOfLastStateSwitch = millis();
     Serial.println("on_initialize_enter");
 }
 void on_initialize_exit(){
+
     Serial.println("on_initialize_exit");
 }
 void on_initialize(){
-    //TaskFrontUltasond();
-    //TaskRearUltrasond();
-    //TaskMTU();
-    delay(5000);
-    fsm.trigger(FSM_MOVEMENT);
+    TaskFrontUltasond();
+    TaskRearUltrasond();
+    TaskMTU();
+    for(int i = 0;i<7;i++){
+        if(expander.digitalRead(i)==HIGH){
+            workingIRsensors[i] = false;
+        }
+    }
+    //delay(5000);
+    //fsm.trigger(FSM_MOVEMENT);
 }
 void on_stop_enter(){
     stopEngines();
@@ -173,7 +183,7 @@ void on_stop(){
         }
     }
     for(int i = 0;i<7;i++){
-        if(expander.digitalRead(i)==HIGH){
+        if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
             Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
             Serial.println(i);
             noFloorDetected = true;
@@ -191,7 +201,10 @@ void on_stop(){
             obstacleDetected = true;
         }
     }
-
+    TaskFrontUltasond();
+    TaskRearUltrasond();
+    if(g_FrontUltraSondDistance < g_ultrasondTreshold || g_RearUltraSondDistance < g_ultrasondTreshold)
+        obstacleDetected = true;
     if(obstacleDetected == true && millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
         fsm.trigger(FSM_OBSTACLE);
@@ -207,34 +220,25 @@ void on_obstacle_detected_enter(){
 }
 void on_obstacle(){
     bool obstacleDetected = false;
+    TaskFrontUltasond();
+    TaskRearUltrasond();  
     for(int i = UpLeft;i<=BackLeft;i++){
         if(digitalRead(i)==LOW){
             obstacleDetected = true;
         }
     }
-    if(obstacleDetected == false && millis()-timeOfLastStateSwitch > 50){
+    if(obstacleDetected == false && millis()-timeOfLastStateSwitch > 50 && g_FrontUltraSondDistance > g_ultrasondTreshold && g_RearUltraSondDistance > g_ultrasondTreshold){ 
         timeOfLastStateSwitch = millis();
         fsm.trigger(FSM_OBSTACLE);
     }
-    
-    TaskFrontUltasond();
-    if(g_FrontUltraSondDistance > g_ultrasondTreshold && millis() - timeOfLastStateSwitch > 50){
-        timeOfLastStateSwitch = millis();
-        fsm.trigger(FSM_OBSTACLE);
-    }
-    TaskRearUltrasond();  
-    if(g_RearUltraSondDistance > g_ultrasondTreshold && millis() - timeOfLastStateSwitch > 50){
-        timeOfLastStateSwitch = millis();
-        fsm.trigger(FSM_OBSTACLE);
-    }  
 }
 void on_obstacle_detected_exit(){
     Serial.println("on_obstacle_detected_exit");
 }
 void on_stairs_detected(){
     bool noFloorDetected = false;
-    for(int i = 0;i<7;i++){
-        if(expander.digitalRead(i)==HIGH){
+    for( int i = 0;i<7;i++){
+        if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
             noFloorDetected = true;
         }
     }
@@ -454,12 +458,13 @@ void TaskMTU(){
     if (!dmpReady) return;
 
     // wait for MPU interrupt or extra packet(s) available
-    while (!mpuInterrupt && fifoCount < packetSize) {
+    if (!mpuInterrupt && fifoCount < packetSize) {
         if (mpuInterrupt && fifoCount < packetSize) {
           // try to get out of the infinite loop 
           fifoCount = mpu.getFIFOCount();
         }  
         // other program behavior stuff here
+        return;
     }
 
     // reset interrupt flag and get INT_STATUS byte
@@ -479,7 +484,10 @@ void TaskMTU(){
     // otherwise, check for DMP data ready interrupt (this should happen frequently)
     } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
         // wait for correct available data length, should be a VERY short wait
-        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+        if (fifoCount < packetSize){
+            fifoCount = mpu.getFIFOCount();
+            return;
+        } 
 
         // read a packet from FIFO
         mpu.getFIFOBytes(fifoBuffer, packetSize);
