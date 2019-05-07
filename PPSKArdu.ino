@@ -33,12 +33,15 @@
 
 #pragma region globals
 unsigned long timeOfLastStateSwitch;
+unsigned long timeOfSonarFrontRestart;
+unsigned long timeOfSonarRearRestart;
 PCF8574 expander;
 MPU6050 mpu;
 Servo left;
 Servo right; 
 int leftStop = 111;
 int rightStop = 81;
+unsigned int g_ultrasondTreshold;
 NewPing sonarBack(trigPinBack, echoPinBack, MAX_DISTANCE);
 NewPing sonarFront(trigPinFront,echoPinFront,MAX_DISTANCE);
 
@@ -47,18 +50,11 @@ byte g_ekspanderSensors;
 byte g_limitSwitchesSensors;
 unsigned int g_FrontUltraSondDistance;
 unsigned int g_RearUltraSondDistance;
+byte g_frontSonarState;
+byte g_rearSonarState;
+
 
 #pragma endregion globals
-
-#pragma region FreeRtosTasks
-void TaskFSM(void *pvParameters);
-void TaskFrontUltasond(void *pvParameters);
-void TaskRearUltrasond(void *pvParameters);
-void TaskMTU(void *pvParameters);
-void TaskExpander(void *pvParameters);
-void TaskSwitches(void *pvParameters);
-void TaskSerialRead(void *pvParameters);
-#pragma endregion FreeRtosTasks
 
 #define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
@@ -110,6 +106,7 @@ void on_movement(){
 
         }
     }
+    
     bool noFloorDetected = false;
     for(int i = 0;i<7;i++){
         if(expander.digitalRead(i)==HIGH){
@@ -120,7 +117,7 @@ void on_movement(){
     }
     if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
-        fsm.trigger(FSM_STAIRS);
+        //fsm.trigger(FSM_STAIRS);
     }
     bool obstacleDetected = false;
     for(int i = UpLeft;i<=BackLeft;i++){
@@ -133,7 +130,18 @@ void on_movement(){
     if(obstacleDetected == true && millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
         fsm.trigger(FSM_OBSTACLE);
-    }  
+    }
+
+    TaskFrontUltasond();
+    if(g_FrontUltraSondDistance < g_ultrasondTreshold && millis() - timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
+        fsm.trigger(FSM_OBSTACLE);
+    }
+    TaskRearUltrasond();  
+    if(g_RearUltraSondDistance < g_ultrasondTreshold && millis() - timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
+        fsm.trigger(FSM_OBSTACLE);
+    }
 }
 void on_movement_exit(){
     Serial.println("on_movement_exit");
@@ -146,6 +154,9 @@ void on_initialize_exit(){
     Serial.println("on_initialize_exit");
 }
 void on_initialize(){
+    //TaskFrontUltasond();
+    //TaskRearUltrasond();
+    //TaskMTU();
     delay(5000);
     fsm.trigger(FSM_MOVEMENT);
 }
@@ -202,6 +213,17 @@ void on_obstacle(){
         }
     }
     if(obstacleDetected == false && millis()-timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
+        fsm.trigger(FSM_OBSTACLE);
+    }
+    
+    TaskFrontUltasond();
+    if(g_FrontUltraSondDistance > g_ultrasondTreshold && millis() - timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
+        fsm.trigger(FSM_OBSTACLE);
+    }
+    TaskRearUltrasond();  
+    if(g_RearUltraSondDistance > g_ultrasondTreshold && millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
         fsm.trigger(FSM_OBSTACLE);
     }  
@@ -292,13 +314,63 @@ void setupMPU(){
     pinMode(LED_PIN, OUTPUT);
 }
 }
-void restartSonar(int echo, int trig){
-    pinMode(echo, OUTPUT);
-    delay(150);
-    digitalWrite(echo, LOW);
-    delay(150);
-    pinMode(echo, INPUT);
-    delay(150);
+byte restartFrontSonar(byte previousState){
+    byte state = 0;
+    unsigned long currentTime = millis();
+    if(previousState==4){
+        pinMode(echoPinFront, OUTPUT);
+        timeOfSonarFrontRestart = millis();
+        state = 1;
+        return state;
+    }
+    if(previousState == 1 && currentTime-timeOfSonarFrontRestart > 150){
+        digitalWrite(echoPinFront, LOW);
+        timeOfSonarFrontRestart = currentTime;
+        state = 2;
+        return state;
+    }
+    if(previousState == 2 && currentTime-timeOfSonarFrontRestart > 150){
+        pinMode(echoPinFront, INPUT);
+        timeOfSonarFrontRestart = currentTime;
+        state = 3;
+        return state;
+    }
+    if(previousState == 3 && currentTime-timeOfSonarFrontRestart > 150){
+        timeOfSonarFrontRestart = currentTime;
+        state = 0;
+        return state;
+    }
+    return previousState;
+}
+byte restartRearSonar(byte previousState){
+    byte state = 0;
+    unsigned long currentTime = millis();
+    // Serial.print("Prev state");
+    // Serial.println(previousState);
+    if(previousState==4){
+        pinMode(echoPinBack, OUTPUT);
+        timeOfSonarRearRestart = millis();
+        state = 1;
+        return state;
+    }
+    if(previousState == 1 && currentTime-timeOfSonarRearRestart > 150){
+        digitalWrite(echoPinBack, LOW);
+        timeOfSonarRearRestart = millis();
+        state = 2;
+        return state;
+    }
+    if(previousState == 2 && currentTime-timeOfSonarRearRestart > 150){
+        pinMode(echoPinBack, INPUT);
+        timeOfSonarRearRestart = millis();
+        state = 3;
+        return state;
+    }
+    if(previousState == 3 && currentTime-timeOfSonarRearRestart > 150){
+        timeOfSonarRearRestart = millis();
+        state = 0;
+        return state;
+    }
+    return previousState;
 }
 void stopEngines(){
     right.write(rightStop);//stop signal
@@ -308,6 +380,9 @@ void stopEngines(){
 void setup() {
 	// join I2C bus (I2Cdev library doesn't do this automatically)
     Serial.begin(115200);
+    g_frontSonarState = 0;
+    g_rearSonarState = 0;
+    g_ultrasondTreshold = 15;
 
     fsm.add_transition(&state_initialize, &state_movement,FSM_MOVEMENT,NULL);
     fsm.add_transition(&state_movement,&state_stop,FSM_STOP,NULL);
@@ -349,7 +424,6 @@ void setup() {
 
   stopEngines();
 
-  Serial.begin(115200);
 }
 
 void loop(){
@@ -372,26 +446,7 @@ void loop(){
 left.write(leftStop);//stop signal
     stopEngines = true;
     }*/
-	
-	/*delay(150);*/
-  //int uS = sonar.ping_cm();
-//   if (uS==0)
-//   {
-//     Serial.println("MAX: resetting sensor");
-//     pinMode(echoPin, OUTPUT);
-//     delay(150);
-//     digitalWrite(echoPin, LOW);
-//     delay(150);
-//     pinMode(echoPin, INPUT);
-//     delay(150);
-//   }
-//   else
-//   {
-//   Serial.print(" ");
-//   Serial.print("Ping: ");
-//   Serial.print(uS);
-//   Serial.println("cm");
-//   }
+    fsm.run_machine();
 }
 
 
@@ -448,27 +503,40 @@ void TaskMTU(){
 }
 void TaskFrontUltasond(  )  // This is a Task.
 {
+        if(g_frontSonarState != 0){
+            g_frontSonarState = restartFrontSonar(g_frontSonarState);
+            return;
+        }
         int uS = sonarFront.ping_cm();
+        
         if (uS==0)
         {
-            restartSonar(echoPinFront,trigPinFront);
+            Serial.println("Reseutuje przedni sonar");
+            g_frontSonarState = restartFrontSonar(4);
         }else{
             g_FrontUltraSondDistance = uS;
+            Serial.print("FronSonar: ");
+            Serial.println(g_FrontUltraSondDistance);
         }
-
 }
 
-void TaskRearUltrasond(void *pvParameters __attribute__((unused))){
-    for(;;){
-        int uS = sonarBack.ping_cm();
-        if (uS==0)
-        {
-            restartSonar(echoPinBack,trigPinBack);
-        }else{
-            g_RearUltraSondDistance = uS;
-        }
-
+void TaskRearUltrasond(){
+    if(g_rearSonarState != 0){    
+            g_rearSonarState = restartRearSonar(g_rearSonarState);
+            return;
     }
+    int uS = sonarBack.ping_cm();
+
+    if (uS==0)
+    {
+        Serial.println("Resetuje tylni sonar");
+        g_rearSonarState = restartRearSonar(4);
+    }else{
+        g_RearUltraSondDistance = uS;
+        Serial.print("Tylni sonar: ");
+        Serial.println(g_RearUltraSondDistance);
+    }
+
 }
 void TaskSerialRead( void *pvParameters __attribute__((unused)) )  // This is a Task.
 {
