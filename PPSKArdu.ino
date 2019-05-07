@@ -58,6 +58,11 @@ int rightStop = 81;
 NewPing sonarBack(trigPinBack, echoPinBack, MAX_DISTANCE);
 NewPing sonarFront(trigPinFront,echoPinFront,MAX_DISTANCE);
 SemaphoreHandle_t xSerialSemaphore;
+SemaphoreHandle_t xExpanderSemaphore;
+SemaphoreHandle_t xLimitSwitchesSemaphore;
+SemaphoreHandle_t xFrontSonarSemaphore;
+SemaphoreHandle_t xRearSonarSemaphore;
+
 byte g_ekspanderSensors;
 byte g_limitSwitchesSensors;
 unsigned int g_FrontUltraSondDistance;
@@ -91,7 +96,7 @@ void TaskSerialRead(void *pvParameters);
 // from the FIFO. Note this also requires gravity vector calculations.
 // Also note that yaw/pitch/roll angles suffer from gimbal lock (for
 // more info, see: http://en.wikipedia.org/wiki/Gimbal_lock)
-#define OUTPUT_READABLE_YAWPITCHROLL
+//#define OUTPUT_READABLE_YAWPITCHROLL
 
 // uncomment "OUTPUT_READABLE_REALACCEL" if you want to see acceleration
 // components with gravity removed. This acceleration reference frame is
@@ -104,7 +109,7 @@ void TaskSerialRead(void *pvParameters);
 // components with gravity removed and adjusted for the world frame of
 // reference (yaw is relative to initial orientation, since no magnetometer
 // is present in this case). Could be quite handy in some cases.
-#define OUTPUT_READABLE_WORLDACCEL
+//#define OUTPUT_READABLE_WORLDACCEL
 
 // uncomment "OUTPUT_TEAPOT" if you want output that matches the
 // format used for the InvenSense teapot demo
@@ -126,11 +131,11 @@ uint8_t fifoBuffer[64]; // FIFO storage buffer
 
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
-VectorInt16 aa;         // [x, y, z]            accel sensor measurements
-VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
-VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
+//VectorInt16 aa;         // [x, y, z]            accel sensor measurements
+//VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
+//VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
 VectorFloat gravity;    // [x, y, z]            gravity vector
-float euler[3];         // [psi, theta, phi]    Euler angle container
+//float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 // packet structure for InvenSense teapot demo
@@ -233,10 +238,11 @@ void on_stop(){
     //         obstacleDetected = true;
     //     }
     // }
-    if(obstacleDetected == true && millis() - timeOfLastStateSwitch > 50){
-        timeOfLastStateSwitch = millis();
-        fsm.trigger(FSM_OBSTACLE);
-    }  
+
+    // if(obstacleDetected == true && millis() - timeOfLastStateSwitch > 50){
+    //     timeOfLastStateSwitch = millis();
+    //     fsm.trigger(FSM_OBSTACLE);
+    // }  
 }
 void on_stop_exit(){
     Serial.println("on_stop_exit");
@@ -280,10 +286,6 @@ void on_stairs_detected_enter(){
 void on_stairs_detected_exit(){
     Serial.println("on_stairs_detected_exit");
 }
-
-
-
-
 #pragma endregion Fsm
 
 // ================================================================
@@ -294,166 +296,9 @@ volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin h
 void dmpDataReady() {
     mpuInterrupt = true;
 }
-
-
-void setup() {
-	// join I2C bus (I2Cdev library doesn't do this automatically)
-    Serial.begin(115200);
-
-    //Serial - create mutex
-    if(xSerialSemaphore == NULL )  // Check to confirm that the Serial Semaphore has not already been created.
-    {
-        xSerialSemaphore = xSemaphoreCreateMutex();  // Create a mutex semaphore we will use to manage the Serial Port
-    if(( xSerialSemaphore ) != NULL )
-        xSemaphoreGive( ( xSerialSemaphore ) );  // Make the Serial Port available for use, by "Giving" the Semaphore.
-    } 
-
-    fsm.add_transition(&state_initialize, &state_movement,FSM_MOVEMENT,NULL);
-    fsm.add_transition(&state_movement,&state_stop,FSM_STOP,NULL);
-    fsm.add_transition(&state_movement,&state_obstacle_detected,FSM_OBSTACLE,NULL);
-    fsm.add_transition(&state_movement,&state_stairs_detected,FSM_STAIRS,NULL);
-    fsm.add_transition(&state_stop,&state_movement,FSM_MOVEMENT,NULL);
-    fsm.add_transition(&state_stop,&state_stairs_detected,FSM_STAIRS,NULL);
-    fsm.add_transition(&state_stop,&state_obstacle_detected,FSM_OBSTACLE,NULL);
-    fsm.add_transition(&state_stairs_detected,&state_stop,FSM_STAIRS,NULL);
-    fsm.add_transition(&state_obstacle_detected,&state_stop,FSM_OBSTACLE,NULL);
-
-    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-        Wire.begin();
-        Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
-    #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
-        Fastwire::srestartSonar(int echo, int trig){
-    pinMode(echo, OUTPUT);
-    delay(150);
-    digitalWrite(echo, LOW);
-    delay(150);
-    pinMode(echo, INPUT);
-    delay(15etup(400, true);
-    #endif
-	
-    setupMPU();
-  // put your setup code here, to run once:
-  pinMode(6,INPUT);
-  pinMode(7,INPUT);
-  pinMode(4,INPUT);
-  pinMode(5,INPUT);
-  pinMode(8,OUTPUT);
-  
-
-  expander.begin(0x20);
-  expander.pinMode(0,INPUT_PULLUP);
-  expander.pinMode(1,INPUT_PULLUP);
-  expander.pinMode(2,INPUT_PULLUP);
-  expander.pinMode(3,INPUT_PULLUP);
-  expander.pinMode(4,INPUT_PULLUP);
-  expander.pinMode(5,INPUT_PULLUP);
-  expander.pinMode(6,INPUT_PULLUP);
-  
-  left.attach(10, 1000, 1800); //right servo motor
-  right.attach(9, 100, 1800); //l//
-
-  stopEngines();
-
-  Serial.begin(115200);
-
-  //Create Tasks
-    xTaskCreate(
-    TaskFSM
-    ,  (const portCHAR *)"FiniteStateMachine"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-
-    xTaskCreate(
-    TaskExpander
-    ,  (const portCHAR *)"TaskExpander"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-
-    xTaskCreate(
-    TaskFrontUltasond
-    ,  (const portCHAR *)"FrontUltrasond"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-    xTaskCreate(
-    TaskRearUltrasond
-    ,  (const portCHAR *)"RearUltrasond"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  1  
-    ,  NULL );
-    xTaskCreate(
-    TaskSerialRead
-    ,  (const portCHAR *)"SerialRead"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  0  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-    xTaskCreate(
-    TaskSwitches
-    ,  (const portCHAR *)"LimitSwitches"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-    xTaskCreate(
-    TaskMTU
-    ,  (const portCHAR *)"MTU"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-}
-
-void loop(){
-
-	
-	/*while(stopEngines == false){
-    right.write(rightStop-10);
-    left.write(leftStop + 10);
-    delay(1500);
-    right.write(rightStop+10);
-    left.write(leftStop - 10);
-    delay(1500);
-    right.write(rightStop+10);
-    left.write(leftStop + 10);
-    delay(1500);
-    right.write(rightStop-10);
-    left.write(leftStop - 10);
-    delay(1500);
-    right.write(rightStop);//stop signal
-left.write(leftStop);//stop signal
-    stopEngines = true;
-    }*/
-	
-	/*delay(150);
-  int uS = sonar.ping_cm();
-  if (uS==0)
-  {
-    Serial.println("MAX: resetting sensor");
-    pinMode(echoPin, OUTPUT);
-    delay(150);
-    digitalWrite(echoPin, LOW);
-    delay(150);
-    pinMode(echoPin, INPUT);
-    delay(150);
-  }
-  else
-  {
-  Serial.print(" ");
-  Serial.print("Ping: ");
-  Serial.print(uS);
-  Serial.println("cm");
-  }*/
-}
 void setupMPU(){
 
-      Serial.println(F("Initializing I2C devices..."));
+    Serial.println(F("Initializing I2C devices..."));
     mpu.initialize();
     pinMode(INTERRUPT_PIN, INPUT);
 
@@ -502,6 +347,7 @@ void setupMPU(){
     // configure LED for output
     pinMode(LED_PIN, OUTPUT);
 }
+}
 void restartSonar(int echo, int trig){
     pinMode(echo, OUTPUT);
     vTaskDelay(10);
@@ -514,6 +360,186 @@ void stopEngines(){
     right.write(rightStop);//stop signal
     left.write(leftStop);//stop signal
 }
+
+void setup() {
+	// join I2C bus (I2Cdev library doesn't do this automatically)
+    Serial.begin(115200);
+
+
+    //Serial - create mutex
+    if(xSerialSemaphore == NULL )  // Check to confirm that the Serial Semaphore has not already been created.
+    {
+        xSerialSemaphore = xSemaphoreCreateMutex();  // Create a mutex semaphore we will use to manage the Serial Port
+    if(( xSerialSemaphore ) != NULL )
+        xSemaphoreGive( ( xSerialSemaphore ) );  // Make the Serial Port available for use, by "Giving" the Semaphore.
+    } 
+
+    if(xLimitSwitchesSemaphore == NULL )  
+    {
+        xLimitSwitchesSemaphore = xSemaphoreCreateMutex(); 
+    if(( xLimitSwitchesSemaphore ) != NULL )
+        xSemaphoreGive( ( xLimitSwitchesSemaphore ) ); 
+    } 
+
+    if(xExpanderSemaphore == NULL ) 
+    {
+        xExpanderSemaphore = xSemaphoreCreateMutex();  
+    if(( xExpanderSemaphore ) != NULL )
+        xSemaphoreGive( ( xExpanderSemaphore ) );  
+    } 
+
+    if(xFrontSonarSemaphore == NULL ) 
+    {
+        xFrontSonarSemaphore = xSemaphoreCreateMutex();  
+    if(( xFrontSonarSemaphore ) != NULL )
+        xSemaphoreGive( ( xFrontSonarSemaphore ) );  
+    } 
+
+    if(xRearSonarSemaphore == NULL ) 
+    {
+        xRearSonarSemaphore = xSemaphoreCreateMutex();  
+    if(( xRearSonarSemaphore ) != NULL )
+        xSemaphoreGive( ( xRearSonarSemaphore ) );  
+    } 
+
+    fsm.add_transition(&state_initialize, &state_movement,FSM_MOVEMENT,NULL);
+    fsm.add_transition(&state_movement,&state_stop,FSM_STOP,NULL);
+    fsm.add_transition(&state_movement,&state_obstacle_detected,FSM_OBSTACLE,NULL);
+    fsm.add_transition(&state_movement,&state_stairs_detected,FSM_STAIRS,NULL);
+    fsm.add_transition(&state_stop,&state_movement,FSM_MOVEMENT,NULL);
+    fsm.add_transition(&state_stop,&state_stairs_detected,FSM_STAIRS,NULL);
+    fsm.add_transition(&state_stop,&state_obstacle_detected,FSM_OBSTACLE,NULL);
+    fsm.add_transition(&state_stairs_detected,&state_stop,FSM_STAIRS,NULL);
+    fsm.add_transition(&state_obstacle_detected,&state_stop,FSM_OBSTACLE,NULL);
+
+    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+        Wire.begin();
+        Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
+    #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
+        Fastwire::setup(400, true);
+    #endif
+	
+  setupMPU();
+  // put your setup code here, to run once:
+  pinMode(6,INPUT);
+  pinMode(7,INPUT);
+  pinMode(4,INPUT);
+  pinMode(5,INPUT);
+  pinMode(8,OUTPUT);
+  
+
+  expander.begin(0x20);
+  expander.pinMode(0,INPUT_PULLUP);
+  expander.pinMode(1,INPUT_PULLUP);
+  expander.pinMode(2,INPUT_PULLUP);
+  expander.pinMode(3,INPUT_PULLUP);
+  expander.pinMode(4,INPUT_PULLUP);
+  expander.pinMode(5,INPUT_PULLUP);
+  expander.pinMode(6,INPUT_PULLUP);
+  
+  left.attach(10, 1000, 1800); //right servo motor
+  right.attach(9, 100, 1800); //l//
+
+  stopEngines();
+
+  Serial.begin(115200);
+
+  //Create Tasks
+    xTaskCreate(
+    TaskFSM
+    ,  (const portCHAR *)"FiniteStateMachine"  // A name just for humans
+    ,  256  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+
+    xTaskCreate(
+    TaskExpander
+    ,  (const portCHAR *)"TaskExpander"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+
+    xTaskCreate(
+    TaskFrontUltasond
+    ,  (const portCHAR *)"FrontUltrasond"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+    xTaskCreate(
+    TaskRearUltrasond
+    ,  (const portCHAR *)"RearUltrasond"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  1  
+    ,  NULL );
+    xTaskCreate(
+    TaskSerialRead
+    ,  (const portCHAR *)"SerialRead"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  0  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+    xTaskCreate(
+    TaskSwitches
+    ,  (const portCHAR *)"LimitSwitches"  // A name just for humans
+    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+    xTaskCreate(
+    TaskMTU
+    ,  (const portCHAR *)"MTU"  // A name just for humans
+    ,  256  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL );
+}
+
+void loop(){
+
+	
+	/*while(stopEngines == false){
+    right.write(rightStop-10);
+    left.write(leftStop + 10);
+    delay(1500);
+    right.write(rightStop+10);
+    left.write(leftStop - 10);
+    delay(1500);
+    right.write(rightStop+10);
+    left.write(leftStop + 10);
+    delay(1500);
+    right.write(rightStop-10);
+    left.write(leftStop - 10);
+    delay(1500);
+    right.write(rightStop);//stop signal
+left.write(leftStop);//stop signal
+    stopEngines = true;
+    }*/
+	
+	/*delay(150);*/
+  //int uS = sonar.ping_cm();
+//   if (uS==0)
+//   {
+//     Serial.println("MAX: resetting sensor");
+//     pinMode(echoPin, OUTPUT);
+//     delay(150);
+//     digitalWrite(echoPin, LOW);
+//     delay(150);
+//     pinMode(echoPin, INPUT);
+//     delay(150);
+//   }
+//   else
+//   {
+//   Serial.print(" ");
+//   Serial.print("Ping: ");
+//   Serial.print(uS);
+//   Serial.println("cm");
+//   }
+}
+
 #pragma region FreeRTOSFunctions
 void TaskFSM( void *pvParameters __attribute__((unused)) )  // This is a Task.
 {
@@ -567,32 +593,7 @@ void TaskMTU(void *pvParameters __attribute__((unused))){
         // (this lets us immediately read more without waiting for an interrupt)
         fifoCount -= packetSize;
 
-//         #ifdef OUTPUT_READABLE_QUATERNION
-//             // display quaternion values in easy matrix form: w x y z
-//             mpu.dmpGetQuaternion(&q, fifoBuffer);
-//             Serial.print("quat\t");
-//             Serial.print(q.w);
-//             Serial.print("\t");
-//             Serial.print(q.x);
-//             Serial.print("\t");
-//             Serial.print(q.y);
-//             Serial.print("\t");
-//             Serial.println(q.z);
-//         #endif
 
-//         #ifdef OUTPUT_READABLE_EULER
-//             // display Euler angles in degrees
-//             mpu.dmpGetQuaternion(&q, fifoBuffer);
-//             mpu.dmpGetEuler(euler, &q);
-//             Serial.print("euler\t");
-//             Serial.print(euler[0] * 180/M_PI);
-//             Serial.print("\t");
-//             Serial.print(euler[1] * 180/M_PI);
-//             Serial.print("\t");
-//             Serial.println(euler[2] * 180/M_PI);
-//         #endif
-
-        #ifdef OUTPUT_READABLE_YAWPITCHROLL
             // display Euler angles in degrees
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
@@ -603,106 +604,60 @@ void TaskMTU(void *pvParameters __attribute__((unused))){
             Serial.print(ypr[1] * 180/M_PI);
             Serial.print("\t");
             Serial.println(ypr[2] * 180/M_PI);
-        #endif
-
-//         #ifdef OUTPUT_READABLE_REALACCEL
-//             // display real acceleration, adjusted to remove gravity
-//             mpu.dmpGetQuaternion(&q, fifoBuffer);
-//             mpu.dmpGetAccel(&aa, fifoBuffer);
-//             mpu.dmpGetGravity(&gravity, &q);
-//             mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-//             Serial.print("areal\t");
-//             Serial.print(aaReal.x);
-//             Serial.print("\t");
-//             Serial.print(aaReal.y);
-//             Serial.print("\t");
-//             Serial.println(aaReal.z);
-//         #endif
-
-//         #ifdef OUTPUT_READABLE_WORLDACCEL
-//             // display initial world-frame acceleration, adjusted to remove gravity
-//             // and rotated based on known orientation from quaternion
-//             mpu.dmpGetQuaternion(&q, fifoBuffer);
-//             mpu.dmpGetAccel(&aa, fifoBuffer);
-//             mpu.dmpGetGravity(&gravity, &q);
-//             mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-//             mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-//             Serial.print("aworld\t");
-//             Serial.print(aaWorld.x);
-//             Serial.print("\t");
-//             Serial.print(aaWorld.y);
-//             Serial.print("\t");
-//             Serial.println(aaWorld.z);
-//         #endif
-    
-//         #ifdef OUTPUT_TEAPOT
-//             // display quaternion values in InvenSense Teapot demo format:
-//             teapotPacket[2] = fifoBuffer[0];
-//             teapotPacket[3] = fifoBuffer[1];
-//             teapotPacket[4] = fifoBuffer[4];
-//             teapotPacket[5] = fifoBuffer[5];
-//             teapotPacket[6] = fifoBuffer[8];
-//             teapotPacket[7] = fifoBuffer[9];
-//             teapotPacket[8] = fifoBuffer[12];
-//             teapotPacket[9] = fifoBuffer[13];
-//             Serial.write(teapotPacket, 14);
-//             teapotPacket[11]++; // packetCount, loops at 0xFF on purpose
-//         #endif
-
-//         // blink LED to indicate activity
-//         blinkState = !blinkState;
-//         digitalWrite(LED_PIN, blinkState);
-// 	}
-
+    }
 }
 void TaskFrontUltasond( void *pvParameters __attribute__((unused)) )  // This is a Task.
 {
-    int uS = sonarFront.ping_cm();
-    if (uS==0)
-    {
-        resetSensors();
-    }else{
-        g_FrontUltraSondDistance = uS;
+    for(;;){
+        int uS = sonarFront.ping_cm();
+        if (uS==0)
+        {
+            restartSonar(echoPinFront,trigPinFront);
+        }else{
+            g_FrontUltraSondDistance = uS;
+        }
+        vTaskDelay(5);
     }
-    vTaskDelay(1);
 }
 void TaskRearUltrasond(void *pvParameters __attribute__((unused))){
-    int uS = sonarFront.ping_cm();
-    if (uS==0)
-    {
-        resetSensors();
-    }else{
-        g_RearUltraSondDistance = uS;
+    for(;;){
+        int uS = sonarBack.ping_cm();
+        if (uS==0)
+        {
+            restartSonar(echoPinBack,trigPinBack);
+        }else{
+            g_RearUltraSondDistance = uS;
+        }
+        vTaskDelay(5);
     }
-    vTaskDelay(1);
 }
 void TaskSerialRead( void *pvParameters __attribute__((unused)) )  // This is a Task.
 {
-    vTaskDelay(1);
+    for(;;){
+        vTaskDelay(1);
+    }
 }
 void TaskSwitches(void *pvParameters __attribute__((unused))){
-    //bool obstacleDetected = false;
-    g_limitSwitchesSensors = 1;
-    for(int i = UpLeft;i<=BackLeft;i++){
-        g_limitSwitchesSensors = g_limitSwitchesSensors & digitalRead(i); 
-        g_limitSwitchesSensors <<=1;
-    //    if(digitalRead(i)==LOW){
-     //       Serial.print("Wykryto zderzenie z przeszkoda na czujniku nr ");
-     //       Serial.println(i);
-    //        obstacleDetected = true;
-    //    }
-
+    for(;;){
+        g_limitSwitchesSensors = 1;
+        for(int i = UpLeft;i<=BackLeft;i++){
+            g_limitSwitchesSensors = g_limitSwitchesSensors & digitalRead(i); 
+            g_limitSwitchesSensors <<=1;
+        }
+        vTaskDelay(1);
     }
-    
-    vTaskDelay(1);
 }
 void TaskExpander(void *pvParameters __attribute__((unused))){
-    g_ekspanderSensors = 1;
-    for(int i = 0;i<7;i++){
-        g_ekspanderSensors = g_ekspanderSensors & ekspander.digitalRead(i); 
-        g_ekspanderSensors <<=1;
-    }
+    for(;;){
+        g_ekspanderSensors = 1;
+        for(int i = 0;i<7;i++){
+            g_ekspanderSensors = g_ekspanderSensors & expander.digitalRead(i); 
+            g_ekspanderSensors <<=1;
+        }
 
-    vTaskDelay(1);
+        vTaskDelay(1);
+    }
+   
 }
+
 #pragma endregion FreeRTOSFunctions 
