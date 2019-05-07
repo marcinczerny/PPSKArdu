@@ -1,22 +1,6 @@
 #pragma region includes
 #include <Fsm.h>
-#include <Arduino_FreeRTOS.h>
-#include <croutine.h>
-#include <event_groups.h>
-#include <FreeRTOSConfig.h>
-#include <FreeRTOSVariant.h>
-#include <list.h>
-#include <message_buffer.h>
 #include <mpu_wrappers.h>
-#include <portable.h>
-#include <portmacro.h>
-#include <projdefs.h>
-#include <queue.h>
-#include <semphr.h>
-#include <stack_macros.h>
-#include <stream_buffer.h>
-#include <task.h>
-#include <timers.h>
 #include <Servo.h>
 #include <PCF8574.h>
 #include <helper_3dmath.h>
@@ -57,11 +41,7 @@ int leftStop = 111;
 int rightStop = 81;
 NewPing sonarBack(trigPinBack, echoPinBack, MAX_DISTANCE);
 NewPing sonarFront(trigPinFront,echoPinFront,MAX_DISTANCE);
-SemaphoreHandle_t xSerialSemaphore;
-SemaphoreHandle_t xExpanderSemaphore;
-SemaphoreHandle_t xLimitSwitchesSemaphore;
-SemaphoreHandle_t xFrontSonarSemaphore;
-SemaphoreHandle_t xRearSonarSemaphore;
+
 
 byte g_ekspanderSensors;
 byte g_limitSwitchesSensors;
@@ -79,43 +59,6 @@ void TaskExpander(void *pvParameters);
 void TaskSwitches(void *pvParameters);
 void TaskSerialRead(void *pvParameters);
 #pragma endregion FreeRtosTasks
-// uncomment "OUTPUT_READABLE_QUATERNION" if you want to see the actual
-// quaternion components in a [w, x, y, z] format (not best for parsing
-// quaternion components in a [w, x, y, z] format (not best for parsing
-// on a remote host such as Processing or something though)
-//#define OUTPUT_READABLE_QUATERNION
-
-// uncomment "OUTPUT_READABLE_EULER" if you want to see Euler angles
-// (in degrees) calculated from the quaternions coming from the FIFO.
-// Note that Euler angles suffer from gimbal lock (for more info, see
-// http://en.wikipedia.org/wiki/Gimbal_lock)
-//#define OUTPUT_READABLE_EULER
-
-// uncomment "OUTPUT_READABLE_YAWPITCHROLL" if you want to see the yaw/
-// pitch/roll angles (in degrees) calculated from the quaternions coming
-// from the FIFO. Note this also requires gravity vector calculations.
-// Also note that yaw/pitch/roll angles suffer from gimbal lock (for
-// more info, see: http://en.wikipedia.org/wiki/Gimbal_lock)
-//#define OUTPUT_READABLE_YAWPITCHROLL
-
-// uncomment "OUTPUT_READABLE_REALACCEL" if you want to see acceleration
-// components with gravity removed. This acceleration reference frame is
-// not compensated for orientation, so +X is always +X according to the
-// sensor, just without the effects of gravity. If you want acceleration
-// compensated for orientation, us OUTPUT_READABLE_WORLDACCEL instead.
-//#define OUTPUT_READABLE_REALACCEL
-
-// uncomment "OUTPUT_READABLE_WORLDACCEL" if you want to see acceleration
-// components with gravity removed and adjusted for the world frame of
-// reference (yaw is relative to initial orientation, since no magnetometer
-// is present in this case). Could be quite handy in some cases.
-//#define OUTPUT_READABLE_WORLDACCEL
-
-// uncomment "OUTPUT_TEAPOT" if you want output that matches the
-// format used for the InvenSense teapot demo
-//#define OUTPUT_TEAPOT
-
-
 
 #define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
@@ -138,8 +81,6 @@ VectorFloat gravity;    // [x, y, z]            gravity vector
 //float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
-// packet structure for InvenSense teapot demo
-//uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 #pragma region Fsm
 #define FSM_STOP 1
 #define FSM_MOVEMENT 2
@@ -152,8 +93,9 @@ State state_stop(&on_stop_enter,&on_stop,&on_stop_exit);
 State state_obstacle_detected(&on_obstacle_detected_enter,&on_obstacle,&on_obstacle_detected_exit);
 State state_stairs_detected(&on_stairs_detected_enter,&on_stairs_detected,&on_stairs_detected_exit);
 
-
 Fsm fsm(&state_initialize);
+
+
 void on_movement_enter(){
     Serial.println("on_movement_enter");
 }
@@ -168,18 +110,18 @@ void on_movement(){
 
         }
     }
-    // bool noFloorDetected = false;
-    // for(int i = 0;i<7;i++){
-    //     if(expander.digitalRead(i)==HIGH){
-    //         Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
-    //         Serial.println(i);
-    //         noFloorDetected = true;
-    //     }
-    // }
-    // if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
-    //     timeOfLastStateSwitch = millis();
-    //     fsm.trigger(FSM_STAIRS);
-    // }
+    bool noFloorDetected = false;
+    for(int i = 0;i<7;i++){
+        if(expander.digitalRead(i)==HIGH){
+            Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
+            Serial.println(i);
+            noFloorDetected = true;
+        }
+    }
+    if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
+        fsm.trigger(FSM_STAIRS);
+    }
     bool obstacleDetected = false;
     for(int i = UpLeft;i<=BackLeft;i++){
         if(digitalRead(i)==LOW){
@@ -230,19 +172,19 @@ void on_stop(){
         timeOfLastStateSwitch = millis();
         fsm.trigger(FSM_STAIRS);
     }
-    // bool obstacleDetected = false;
-    // for(int i = UpLeft;i<=BackLeft;i++){
-    //     if(digitalRead(i)==LOW){
-    //         Serial.print("Wykryto zderzenie z przeszkoda na czujniku nr ");
-    //         Serial.println(i);
-    //         obstacleDetected = true;
-    //     }
-    // }
+    bool obstacleDetected = false;
+    for(int i = UpLeft;i<=BackLeft;i++){
+        if(digitalRead(i)==LOW){
+            Serial.print("Wykryto zderzenie z przeszkoda na czujniku nr ");
+            Serial.println(i);
+            obstacleDetected = true;
+        }
+    }
 
-    // if(obstacleDetected == true && millis() - timeOfLastStateSwitch > 50){
-    //     timeOfLastStateSwitch = millis();
-    //     fsm.trigger(FSM_OBSTACLE);
-    // }  
+    if(obstacleDetected == true && millis() - timeOfLastStateSwitch > 50){
+        timeOfLastStateSwitch = millis();
+        fsm.trigger(FSM_OBSTACLE);
+    }  
 }
 void on_stop_exit(){
     Serial.println("on_stop_exit");
@@ -286,6 +228,8 @@ void on_stairs_detected_enter(){
 void on_stairs_detected_exit(){
     Serial.println("on_stairs_detected_exit");
 }
+
+
 #pragma endregion Fsm
 
 // ================================================================
@@ -350,11 +294,11 @@ void setupMPU(){
 }
 void restartSonar(int echo, int trig){
     pinMode(echo, OUTPUT);
-    vTaskDelay(10);
+    delay(150);
     digitalWrite(echo, LOW);
-    vTaskDelay(10);
+    delay(150);
     pinMode(echo, INPUT);
-    vTaskDelay(10);
+    delay(150);
 }
 void stopEngines(){
     right.write(rightStop);//stop signal
@@ -364,43 +308,6 @@ void stopEngines(){
 void setup() {
 	// join I2C bus (I2Cdev library doesn't do this automatically)
     Serial.begin(115200);
-
-
-    //Serial - create mutex
-    if(xSerialSemaphore == NULL )  // Check to confirm that the Serial Semaphore has not already been created.
-    {
-        xSerialSemaphore = xSemaphoreCreateMutex();  // Create a mutex semaphore we will use to manage the Serial Port
-    if(( xSerialSemaphore ) != NULL )
-        xSemaphoreGive( ( xSerialSemaphore ) );  // Make the Serial Port available for use, by "Giving" the Semaphore.
-    } 
-
-    if(xLimitSwitchesSemaphore == NULL )  
-    {
-        xLimitSwitchesSemaphore = xSemaphoreCreateMutex(); 
-    if(( xLimitSwitchesSemaphore ) != NULL )
-        xSemaphoreGive( ( xLimitSwitchesSemaphore ) ); 
-    } 
-
-    if(xExpanderSemaphore == NULL ) 
-    {
-        xExpanderSemaphore = xSemaphoreCreateMutex();  
-    if(( xExpanderSemaphore ) != NULL )
-        xSemaphoreGive( ( xExpanderSemaphore ) );  
-    } 
-
-    if(xFrontSonarSemaphore == NULL ) 
-    {
-        xFrontSonarSemaphore = xSemaphoreCreateMutex();  
-    if(( xFrontSonarSemaphore ) != NULL )
-        xSemaphoreGive( ( xFrontSonarSemaphore ) );  
-    } 
-
-    if(xRearSonarSemaphore == NULL ) 
-    {
-        xRearSonarSemaphore = xSemaphoreCreateMutex();  
-    if(( xRearSonarSemaphore ) != NULL )
-        xSemaphoreGive( ( xRearSonarSemaphore ) );  
-    } 
 
     fsm.add_transition(&state_initialize, &state_movement,FSM_MOVEMENT,NULL);
     fsm.add_transition(&state_movement,&state_stop,FSM_STOP,NULL);
@@ -443,59 +350,6 @@ void setup() {
   stopEngines();
 
   Serial.begin(115200);
-
-  //Create Tasks
-    xTaskCreate(
-    TaskFSM
-    ,  (const portCHAR *)"FiniteStateMachine"  // A name just for humans
-    ,  256  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-
-    xTaskCreate(
-    TaskExpander
-    ,  (const portCHAR *)"TaskExpander"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-
-    xTaskCreate(
-    TaskFrontUltasond
-    ,  (const portCHAR *)"FrontUltrasond"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-    xTaskCreate(
-    TaskRearUltrasond
-    ,  (const portCHAR *)"RearUltrasond"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  1  
-    ,  NULL );
-    xTaskCreate(
-    TaskSerialRead
-    ,  (const portCHAR *)"SerialRead"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  0  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-    xTaskCreate(
-    TaskSwitches
-    ,  (const portCHAR *)"LimitSwitches"  // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
-    xTaskCreate(
-    TaskMTU
-    ,  (const portCHAR *)"MTU"  // A name just for humans
-    ,  256  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL );
 }
 
 void loop(){
@@ -540,22 +394,8 @@ left.write(leftStop);//stop signal
 //   }
 }
 
-#pragma region FreeRTOSFunctions
-void TaskFSM( void *pvParameters __attribute__((unused)) )  // This is a Task.
-{
-    for(;;){
-        //Lets start finite state machine
-        fsm.run_machine();
-        if ( xSemaphoreTake( xSerialSemaphore, ( TickType_t ) 5 ) == pdTRUE )
-        {
-            Serial.println("TaskFSM");
-            xSemaphoreGive( xSerialSemaphore ); // Now free or "Give" the Serial Port for others.
-        }
-        vTaskDelay(1);
-    }
 
-}
-void TaskMTU(void *pvParameters __attribute__((unused))){
+void TaskMTU(){
     if (!dmpReady) return;
 
     // wait for MPU interrupt or extra packet(s) available
@@ -606,9 +446,8 @@ void TaskMTU(void *pvParameters __attribute__((unused))){
             Serial.println(ypr[2] * 180/M_PI);
     }
 }
-void TaskFrontUltasond( void *pvParameters __attribute__((unused)) )  // This is a Task.
+void TaskFrontUltasond(  )  // This is a Task.
 {
-    for(;;){
         int uS = sonarFront.ping_cm();
         if (uS==0)
         {
@@ -616,9 +455,9 @@ void TaskFrontUltasond( void *pvParameters __attribute__((unused)) )  // This is
         }else{
             g_FrontUltraSondDistance = uS;
         }
-        vTaskDelay(5);
-    }
+
 }
+
 void TaskRearUltrasond(void *pvParameters __attribute__((unused))){
     for(;;){
         int uS = sonarBack.ping_cm();
@@ -628,14 +467,12 @@ void TaskRearUltrasond(void *pvParameters __attribute__((unused))){
         }else{
             g_RearUltraSondDistance = uS;
         }
-        vTaskDelay(5);
+
     }
 }
 void TaskSerialRead( void *pvParameters __attribute__((unused)) )  // This is a Task.
 {
-    for(;;){
-        vTaskDelay(1);
-    }
+
 }
 void TaskSwitches(void *pvParameters __attribute__((unused))){
     for(;;){
@@ -644,20 +481,14 @@ void TaskSwitches(void *pvParameters __attribute__((unused))){
             g_limitSwitchesSensors = g_limitSwitchesSensors & digitalRead(i); 
             g_limitSwitchesSensors <<=1;
         }
-        vTaskDelay(1);
     }
 }
-void TaskExpander(void *pvParameters __attribute__((unused))){
+void TaskExpander(){
     for(;;){
         g_ekspanderSensors = 1;
         for(int i = 0;i<7;i++){
             g_ekspanderSensors = g_ekspanderSensors & expander.digitalRead(i); 
             g_ekspanderSensors <<=1;
         }
-
-        vTaskDelay(1);
     }
-   
 }
-
-#pragma endregion FreeRTOSFunctions 
