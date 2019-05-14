@@ -35,6 +35,12 @@
 #define CONST_SERIAL_RPI_START 50
 #define CONST_SERIAL_RPI_SPEED 51
 #define CONST_SERIAL_RPI_DIRECTION 52
+
+//TODO: Dobrac wspolczynniki
+#define CONST_SPEED_FACTOR 0.315
+#define CONST_DIRECT_FACTIOR 1.4173 //180/127
+#define CONST_STEERING_FACTOR 0.05
+
 #pragma endregion defines
 
 #pragma region globals
@@ -62,6 +68,7 @@ byte g_frontSonarState;
 byte g_rearSonarState;
 byte g_SetSpeed;
 byte g_SetDirection;
+float yawOffset;
 
 bool workingIRsensors[7];
 
@@ -116,9 +123,9 @@ void on_movement_enter(){
     //TODO: wysyłanie informacji o zmianie stanu
 }
 void on_movement(){
-    //TODO: funkcja do sterowania serwami, bierze informacje o zadanej prędkosći i zadanym kierunku
-    left.write(leftStop + 10);
-    right.write(rightStop - 10);
+    //DEBUG: funkcja do sterowania serwami, bierze informacje o zadanej prędkosći i zadanym kierunku
+    TaskMTU();
+    controlEngines((ypr[0]-yawOffset)*180/M_PI,g_SetSpeed,g_SetDirection);
     
     
     if(Serial.available()>0){
@@ -192,7 +199,7 @@ void on_initialize_enter(){
     Serial.println("on_initialize_enter");
 }
 void on_initialize_exit(){
-
+    yawOffset = ypr[0];
     Serial.println("on_initialize_exit");
 }
 void on_initialize(){
@@ -219,12 +226,14 @@ void on_stop_enter(){
 }
 void on_stop(){
     boolean noFloorDetected = false;
+
     if(Serial.available()>0){
     byte readChar = Serial.read();
-        if (readChar = 'o'){
+        if (readChar = CONST_SERIAL_RPI_START){
             fsm.trigger(FSM_MOVEMENT);
         }
     }
+
     for(int i = 0;i<7;i++){
         if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
             Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
@@ -424,6 +433,21 @@ void stopEngines(){
     left.write(leftStop);//stop signal
 }
 
+void controlEngines(float yaw,byte speed, byte direction){
+    int rightSpeed = rightStop + ((speed - 128)*CONST_SPEED_FACTOR + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
+     ((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
+    
+    right.write(rightSpeed);
+    Serial.print("rightSpeed: ");
+    Serial.println(rightSpeed);
+
+    int leftSpeed = rightStop + ((speed - 128)*CONST_SPEED_FACTOR + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
+     ((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
+    left.write(leftSpeed);
+    Serial.print("leftspeed: ");
+    Serial.println(leftSpeed);
+}
+
 void setup() {
 	// join I2C bus (I2Cdev library doesn't do this automatically)
     Serial.begin(115200);
@@ -544,6 +568,7 @@ void TaskMTU(){
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+            
             // Serial.print("ypr\t");
             // Serial.print(ypr[0] * 180/M_PI);
             // Serial.print("\t");
