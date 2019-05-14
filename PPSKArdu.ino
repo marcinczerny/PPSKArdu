@@ -31,6 +31,10 @@
 #define UpCenter 2
 
 #define CONST_SERIAL_RPI_INITIALIZED 48
+#define CONST_SERIAL_RPI_STOP 49
+#define CONST_SERIAL_RPI_START 50
+#define CONST_SERIAL_RPI_SPEED 51
+#define CONST_SERIAL_RPI_DIRECTION 52
 #pragma endregion defines
 
 #pragma region globals
@@ -56,6 +60,8 @@ unsigned int RearUltrasondArray[7]={0,0,0,0,0,0,0};
 unsigned int g_RearUltraSondDistance;
 byte g_frontSonarState;
 byte g_rearSonarState;
+byte g_SetSpeed;
+byte g_SetDirection;
 
 bool workingIRsensors[7];
 
@@ -88,6 +94,8 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 #define FSM_OBSTACLE 3
 #define FSM_STAIRS 4
 
+
+
 void serialFlush(){
   while(Serial.available() > 0) {
     char t = Serial.read();
@@ -104,32 +112,45 @@ Fsm fsm(&state_initialize);
 
 
 void on_movement_enter(){
-    Serial.println("on_m= 87  DYSTNS:   8ovement_enter");
+    Serial.println("on_movement_enter");
+    //TODO: wysyłanie informacji o zmianie stanu
 }
 void on_movement(){
-    digitalWrite(8,LOW);
+    //TODO: funkcja do sterowania serwami, bierze informacje o zadanej prędkosći i zadanym kierunku
     left.write(leftStop + 10);
     right.write(rightStop - 10);
+    
+    
     if(Serial.available()>0){
     byte readChar = Serial.read();
-        if (readChar = 'o'){
+        if (readChar == CONST_SERIAL_RPI_STOP){
             fsm.trigger(FSM_STOP);
-
+        }else if(readChar == CONST_SERIAL_RPI_SPEED){
+            //wait for data
+            while(Serial.available()==0){}
+                g_SetSpeed = Serial.read();
+                Serial.println(g_SetSpeed);   
+        }else if(readChar == CONST_SERIAL_RPI_DIRECTION){
+            //wait for data
+            while(Serial.available()==0){}
+                g_SetDirection = Serial.read();
+                Serial.println(g_SetDirection);   
         }
     }
     
-    bool noFloorDetected = false;
-    for(int i = 0;i<7;i++){
-        if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
-            Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
-            Serial.println(i);
-            noFloorDetected = true;
-        }
-    }
-    if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
-        timeOfLastStateSwitch = millis();
-        //fsm.trigger(FSM_STAIRS);
-    }
+    //TODO: Odkomentować, jak poprawimy czujniki IR
+    // bool noFloorDetected = false;
+    // for(int i = 0;i<7;i++){
+    //     if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
+    //         Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
+    //         Serial.println(i);
+    //         noFloorDetected = true;
+    //     }
+    // }
+    // if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
+    //     timeOfLastStateSwitch = millis();
+    //     //fsm.trigger(FSM_STAIRS);
+    // }
     bool obstacleDetected = false;
     for(int i = UpLeft;i<=BackLeft;i++){
         if(digitalRead(i)==LOW){
@@ -144,13 +165,16 @@ void on_movement(){
     }
 
     TaskFrontUltasond();
-    if(g_FrontUltraSondDistance < g_ultrasondTreshold && millis() - timeOfLastStateSwitch > 50){
+    if(g_FrontUltraSondDistance < g_ultrasondTreshold && g_FrontUltraSondDistance != 0 && millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
+        Serial.println("Za maly dystans do przeszkody z przodu");
+        Serial.println(g_FrontUltraSondDistance);
         fsm.trigger(FSM_OBSTACLE);
     }
     TaskRearUltrasond();  
-    if(g_RearUltraSondDistance < g_ultrasondTreshold && millis() - timeOfLastStateSwitch > 50){
+    if(g_RearUltraSondDistance < g_ultrasondTreshold && g_RearUltraSondDistance != 0 && millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
+        Serial.println("Za maly dystans do przeszkody z tyłu");
         fsm.trigger(FSM_OBSTACLE);
     }
 }
@@ -179,7 +203,7 @@ void on_initialize(){
             workingIRsensors[i] = false;
         }
     }
-    if(millis()-timeOfLastStateSwitch > 30000){
+    if(millis()-timeOfLastStateSwitch > 5000){
         if(Serial.available()>0){
             cInput = Serial.read();
             if(cInput == CONST_SERIAL_RPI_INITIALIZED){
@@ -611,10 +635,7 @@ void TaskRearUltrasond(){
     }
 
 }
-void TaskSerialRead( void *pvParameters __attribute__((unused)) )  // This is a Task.
-{
 
-}
 void TaskSwitches(void *pvParameters __attribute__((unused))){
     for(;;){
         g_limitSwitchesSensors = 1;
