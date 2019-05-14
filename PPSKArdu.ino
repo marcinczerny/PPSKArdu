@@ -49,6 +49,8 @@ NewPing sonarFront(trigPinFront,echoPinFront,MAX_DISTANCE);
 byte g_ekspanderSensors;
 byte g_limitSwitchesSensors;
 unsigned int g_FrontUltraSondDistance;
+unsigned int FrontUltrasondArray[7]={0,0,0,0,0,0,0};
+unsigned int RearUltrasondArray[7]={0,0,0,0,0,0,0};
 unsigned int g_RearUltraSondDistance;
 byte g_frontSonarState;
 byte g_rearSonarState;
@@ -94,7 +96,7 @@ Fsm fsm(&state_initialize);
 
 
 void on_movement_enter(){
-    Serial.println("on_movement_enter");
+    Serial.println("on_m= 87  DYSTNS:   8ovement_enter");
 }
 void on_movement(){
     digitalWrite(8,LOW);
@@ -159,14 +161,14 @@ void on_initialize_exit(){
     Serial.println("on_initialize_exit");
 }
 void on_initialize(){
-    TaskFrontUltasond();
+    //TaskFrontUltasond();
     TaskRearUltrasond();
-    TaskMTU();
-    for(int i = 0;i<7;i++){
-        if(expander.digitalRead(i)==HIGH){
-            workingIRsensors[i] = false;
-        }
-    }
+    //TaskMTU();
+    // for(int i = 0;i<7;i++){
+    //     if(expander.digitalRead(i)==HIGH){
+    //         workingIRsensors[i] = false;
+    //     }
+    // }
     //delay(5000);
     //fsm.trigger(FSM_MOVEMENT);
 }
@@ -509,6 +511,16 @@ void TaskMTU(){
             Serial.println(ypr[2] * 180/M_PI);
     }
 }
+int sort_desc(const void *cmp1, const void *cmp2)
+{
+  // Need to cast the void * to int *
+  int a = *((int *)cmp1);
+  int b = *((int *)cmp2);
+  // The comparison
+  //return a > b ? -1 : (a < b ? 1 : 0);
+  // A simpler, probably faster way:
+  return b - a;
+}
 void TaskFrontUltasond(  )  // This is a Task.
 {
         if(g_frontSonarState != 0){
@@ -522,9 +534,27 @@ void TaskFrontUltasond(  )  // This is a Task.
             Serial.println("Reseutuje przedni sonar");
             g_frontSonarState = restartFrontSonar(4);
         }else{
-            g_FrontUltraSondDistance = uS;
-            Serial.print("FronSonar: ");
-            Serial.println(g_FrontUltraSondDistance);
+            unsigned int tempArray[7];
+            for(int i =0;i<6;i++){
+                    FrontUltrasondArray[i]=FrontUltrasondArray[i+1];
+                    tempArray[i]=FrontUltrasondArray[i];
+            }
+            FrontUltrasondArray[6]=uS;
+            tempArray[6] = uS;
+            int array_length = sizeof(FrontUltrasondArray) / sizeof(FrontUltrasondArray[0]);
+            if(FrontUltrasondArray[0]!=0){
+                qsort(tempArray,array_length,sizeof(tempArray[0]),sort_desc);
+                g_FrontUltraSondDistance = tempArray[int(array_length/2) + 1];
+                Serial.print("FronSonar: ");
+                for(int j = 0;j<7;j++){
+                    Serial.print("tab[");
+                    Serial.print(j);
+                    Serial.print("]= ");
+                    Serial.print(FrontUltrasondArray[j]);
+                }
+                
+                Serial.println(g_FrontUltraSondDistance);
+            }
         }
 }
 
@@ -537,12 +567,30 @@ void TaskRearUltrasond(){
 
     if (uS==0)
     {
-        Serial.println("Resetuje tylni sonar");
+        //Serial.println("Resetuje tylni sonar");
         g_rearSonarState = restartRearSonar(4);
     }else{
-        g_RearUltraSondDistance = uS;
-        Serial.print("Tylni sonar: ");
-        Serial.println(g_RearUltraSondDistance);
+        unsigned int tempArray[7];
+            for(int i =0;i<6;i++){
+                    RearUltrasondArray[i]=RearUltrasondArray[i+1];
+                    tempArray[i]=RearUltrasondArray[i];
+            }
+            RearUltrasondArray[6]=uS;
+            tempArray[6]=uS;
+            int array_length = sizeof(RearUltrasondArray) / sizeof(RearUltrasondArray[0]);
+            if(RearUltrasondArray[0]!=0){
+                qsort(tempArray,array_length,sizeof(tempArray[0]),sort_desc);
+                g_RearUltraSondDistance = tempArray[int(array_length/2) + 1];
+                Serial.print("FronSonar: ");
+                for(int j = 0;j<7;j++){
+                    Serial.print("tab[");
+                    Serial.print(j);
+                    Serial.print("]= ");
+                    Serial.print(RearUltrasondArray[j]);
+                }
+                Serial.print("  DYSTNS:   ");
+                Serial.println(g_RearUltraSondDistance);
+            }
     }
 
 }
