@@ -29,6 +29,8 @@
 #define expanderLeftUpWheel 0
 #define expanderRightUpWheel 1
 #define UpCenter 2
+
+#define CONST_SERIAL_RPI_INITIALIZED 48
 #pragma endregion defines
 
 #pragma region globals
@@ -85,6 +87,12 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 #define FSM_MOVEMENT 2
 #define FSM_OBSTACLE 3
 #define FSM_STAIRS 4
+
+void serialFlush(){
+  while(Serial.available() > 0) {
+    char t = Serial.read();
+  }
+} 
 
 State state_movement(&on_movement_enter, &on_movement, &on_movement_exit);
 State state_initialize(&on_initialize_enter, &on_initialize, &on_initialize_exit);
@@ -150,6 +158,9 @@ void on_movement_exit(){
     Serial.println("on_movement_exit");
 }
 void on_initialize_enter(){
+    
+    serialFlush();
+
     for(int i = 0;i<7;i++){
             workingIRsensors[i] = true;
     }
@@ -161,16 +172,22 @@ void on_initialize_exit(){
     Serial.println("on_initialize_exit");
 }
 void on_initialize(){
-    //TaskFrontUltasond();
-    TaskRearUltrasond();
-    //TaskMTU();
-    // for(int i = 0;i<7;i++){
-    //     if(expander.digitalRead(i)==HIGH){
-    //         workingIRsensors[i] = false;
-    //     }
-    // }
-    //delay(5000);
-    //fsm.trigger(FSM_MOVEMENT);
+    byte cInput;
+    TaskMTU();
+    for(int i = 0;i<7;i++){
+        if(expander.digitalRead(i)==HIGH){
+            workingIRsensors[i] = false;
+        }
+    }
+    if(millis()-timeOfLastStateSwitch > 30000){
+        if(Serial.available()>0){
+            cInput = Serial.read();
+            if(cInput == CONST_SERIAL_RPI_INITIALIZED){
+                fsm.trigger(FSM_MOVEMENT);
+            }
+        }
+    }
+    
 }
 void on_stop_enter(){
     stopEngines();
@@ -503,12 +520,12 @@ void TaskMTU(){
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            Serial.print("ypr\t");
-            Serial.print(ypr[0] * 180/M_PI);
-            Serial.print("\t");
-            Serial.print(ypr[1] * 180/M_PI);
-            Serial.print("\t");
-            Serial.println(ypr[2] * 180/M_PI);
+            // Serial.print("ypr\t");
+            // Serial.print(ypr[0] * 180/M_PI);
+            // Serial.print("\t");
+            // Serial.print(ypr[1] * 180/M_PI);
+            // Serial.print("\t");
+            // Serial.println(ypr[2] * 180/M_PI);
     }
 }
 int sort_desc(const void *cmp1, const void *cmp2)
@@ -545,15 +562,15 @@ void TaskFrontUltasond(  )  // This is a Task.
             if(FrontUltrasondArray[0]!=0){
                 qsort(tempArray,array_length,sizeof(tempArray[0]),sort_desc);
                 g_FrontUltraSondDistance = tempArray[int(array_length/2) + 1];
-                Serial.print("FronSonar: ");
-                for(int j = 0;j<7;j++){
-                    Serial.print("tab[");
-                    Serial.print(j);
-                    Serial.print("]= ");
-                    Serial.print(FrontUltrasondArray[j]);
-                }
+                // Serial.print("FronSonar: ");
+                // for(int j = 0;j<7;j++){
+                //     Serial.print("tab[");
+                //     Serial.print(j);
+                //     Serial.print("]= ");
+                //     Serial.print(FrontUltrasondArray[j]);
+                // }
                 
-                Serial.println(g_FrontUltraSondDistance);
+                // Serial.println(g_FrontUltraSondDistance);
             }
         }
 }
@@ -581,15 +598,15 @@ void TaskRearUltrasond(){
             if(RearUltrasondArray[0]!=0){
                 qsort(tempArray,array_length,sizeof(tempArray[0]),sort_desc);
                 g_RearUltraSondDistance = tempArray[int(array_length/2) + 1];
-                Serial.print("FronSonar: ");
-                for(int j = 0;j<7;j++){
-                    Serial.print("tab[");
-                    Serial.print(j);
-                    Serial.print("]= ");
-                    Serial.print(RearUltrasondArray[j]);
-                }
-                Serial.print("  DYSTNS:   ");
-                Serial.println(g_RearUltraSondDistance);
+                // Serial.print("FronSonar: ");
+                // for(int j = 0;j<7;j++){
+                //     Serial.print("tab[");
+                //     Serial.print(j);
+                //     Serial.print("]= ");
+                //     Serial.print(RearUltrasondArray[j]);
+                // }
+                // Serial.print("  DYSTNS:   ");
+                // Serial.println(g_RearUltraSondDistance);
             }
     }
 
