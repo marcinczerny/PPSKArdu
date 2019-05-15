@@ -318,6 +318,58 @@ volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin h
 void dmpDataReady() {
     mpuInterrupt = true;
 }
+/*void setupMPU(){
+
+    Serial.println(F("Initializing I2C devices..."));
+    mpu.initialize();
+    pinMode(INTERRUPT_PIN, INPUT);
+
+    // verify connection
+    Serial.println(F("Testing device connections..."));
+    Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
+
+    // load and configure the DMP
+    Serial.println(F("Initializing DMP..."));
+    devStatus = mpu.dmpInitialize();
+
+    // supply your own gyro offsets here, scaled for min sensitivity
+    mpu.setXGyroOffset(0);
+    mpu.setYGyroOffset(0);
+    mpu.setZGyroOffset(0);
+    mpu.setZAccelOffset(1688); // 1688 factory default for my test chip
+
+	 // make sure it worked (returns 0 if so)
+    if (devStatus == 0) {
+        // turn on the DMP, now that it's ready
+        Serial.println(F("Enabling DMP..."));
+        mpu.setDMPEnabled(true);
+
+        // enable Arduino interrupt detection
+        Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
+        Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
+        Serial.println(F(")..."));
+        attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+        mpuIntStatus = mpu.getIntStatus();
+
+        // set our DMP Ready flag so the main loop() function knows it's okay to use it
+        Serial.println(F("DMP ready! Waiting for first interrupt..."));
+        dmpReady = true;
+
+        // get expected DMP packet size for later comparison
+        packetSize = mpu.dmpGetFIFOPacketSize();
+    } else {
+        // ERROR!
+        // 1 = initial memory load failed
+        // 2 = DMP configuration updates failed
+        // (if it's going to break, usually the code will be 1)
+        Serial.print(F("DMP Initialization failed (code "));
+        Serial.print(devStatus);
+        Serial.println(F(")"));
+
+    // configure LED for output
+    pinMode(LED_PIN, OUTPUT);
+}
+}*/
 void setupMPU(){
 
     Serial.println(F("Initializing I2C devices..."));
@@ -441,7 +493,7 @@ void controlEngines(float yaw,byte speed, byte direction){
     Serial.print("rightSpeed: ");
     Serial.println(rightSpeed);
 
-    int leftSpeed = rightStop + ((speed - 128)*CONST_SPEED_FACTOR + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
+    int leftSpeed = leftStop - ((speed - 128)*CONST_SPEED_FACTOR + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
      ((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
     left.write(leftSpeed);
     Serial.print("leftspeed: ");
@@ -494,12 +546,10 @@ void setup() {
   right.attach(9, 100, 1800); //l//
 
   stopEngines();
-
+  Serial.println("Jestem tu: ");
 }
 
 void loop(){
-
-	
 	/*while(stopEngines == false){
     right.write(rightStop-10);
     left.write(leftStop + 10);
