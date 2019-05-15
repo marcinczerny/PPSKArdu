@@ -5,8 +5,6 @@
 #include <PCF8574.h>
 #include <helper_3dmath.h>
 #include <MPU6050_6Axis_MotionApps20.h>
-//#include <MPU6050_6Axis_Motio"/home/marcin/Pobrane/arduino-1.8.9/tools/**",
-               // "/home/marcin/Pobrane/arduino-1.8.9/hardware/arduino/avr/**",nApps20.h>
 
 #include <I2Cdev.h>
 #include <NewPing.h>
@@ -61,8 +59,8 @@ NewPing sonarFront(trigPinFront,echoPinFront,MAX_DISTANCE);
 byte g_ekspanderSensors;
 byte g_limitSwitchesSensors;
 unsigned int g_FrontUltraSondDistance;
-unsigned int FrontUltrasondArray[7]={0,0,0,0,0,0,0};
-unsigned int RearUltrasondArray[7]={0,0,0,0,0,0,0};
+//unsigned int FrontUltrasondArray[7]={0,0,0,0,0,0,0};
+//unsigned int RearUltrasondArray[7]={0,0,0,0,0,0,0};
 unsigned int g_RearUltraSondDistance;
 byte g_frontSonarState;
 byte g_rearSonarState;
@@ -627,16 +625,16 @@ void TaskMTU(){
             // Serial.println(ypr[2] * 180/M_PI);
     }
 }
-int sort_desc(const void *cmp1, const void *cmp2)
-{
-  // Need to cast the void * to int *
-  int a = *((int *)cmp1);
-  int b = *((int *)cmp2);
-  // The comparison
-  //return a > b ? -1 : (a < b ? 1 : 0);
-  // A simpler, probably faster way:
-  return b - a;
-}
+// int sort_desc(const void *cmp1, const void *cmp2)
+// {
+//   // Need to cast the void * to int *
+//   int a = *((int *)cmp1);
+//   int b = *((int *)cmp2);
+//   // The comparison
+//   //return a > b ? -1 : (a < b ? 1 : 0);
+//   // A simpler, probably faster way:
+//   return b - a;
+// }
 void TaskFrontUltasond(  )  // This is a Task.
 {
         if(g_frontSonarState != 0){
@@ -650,27 +648,28 @@ void TaskFrontUltasond(  )  // This is a Task.
             Serial.println("Reseutuje przedni sonar");
             g_frontSonarState = restartFrontSonar(4);
         }else{
-            unsigned int tempArray[7];
-            for(int i =0;i<6;i++){
-                    FrontUltrasondArray[i]=FrontUltrasondArray[i+1];
-                    tempArray[i]=FrontUltrasondArray[i];
-            }
-            FrontUltrasondArray[6]=uS;
-            tempArray[6] = uS;
-            int array_length = sizeof(FrontUltrasondArray) / sizeof(FrontUltrasondArray[0]);
-            if(FrontUltrasondArray[0]!=0){
-                qsort(tempArray,array_length,sizeof(tempArray[0]),sort_desc);
-                g_FrontUltraSondDistance = tempArray[int(array_length/2) + 1];
-                // Serial.print("FronSonar: ");
-                // for(int j = 0;j<7;j++){
-                //     Serial.print("tab[");
-                //     Serial.print(j);
-                //     Serial.print("]= ");
-                //     Serial.print(FrontUltrasondArray[j]);
-                // }
+            g_FrontUltraSondDistance = uS;
+            // unsigned int tempArray[7];
+            // for(int i =0;i<6;i++){
+            //         FrontUltrasondArray[i]=FrontUltrasondArray[i+1];
+            //         tempArray[i]=FrontUltrasondArray[i];
+            // }
+            // FrontUltrasondArray[6]=uS;
+            // tempArray[6] = uS;
+            // int array_length = sizeof(FrontUltrasondArray) / sizeof(FrontUltrasondArray[0]);
+            // if(FrontUltrasondArray[0]!=0){
+            //     qsort(tempArray,array_length,sizeof(tempArray[0]),sort_desc);
+            //     g_FrontUltraSondDistance = tempArray[int(array_length/2) + 1];
+            //     // Serial.print("FronSonar: ");
+            //     // for(int j = 0;j<7;j++){
+            //     //     Serial.print("tab[");
+            //     //     Serial.print(j);
+            //     //     Serial.print("]= ");
+            //     //     Serial.print(FrontUltrasondArray[j]);
+            //     // }
                 
-                // Serial.println(g_FrontUltraSondDistance);
-            }
+            //     // Serial.println(g_FrontUltraSondDistance);
+            // }
         }
 }
 
@@ -686,46 +685,47 @@ void TaskRearUltrasond(){
         //Serial.println("Resetuje tylni sonar");
         g_rearSonarState = restartRearSonar(4);
     }else{
-        unsigned int tempArray[7];
-            for(int i =0;i<6;i++){
-                    RearUltrasondArray[i]=RearUltrasondArray[i+1];
-                    tempArray[i]=RearUltrasondArray[i];
-            }
-            RearUltrasondArray[6]=uS;
-            tempArray[6]=uS;
-            int array_length = sizeof(RearUltrasondArray) / sizeof(RearUltrasondArray[0]);
-            if(RearUltrasondArray[0]!=0){
-                qsort(tempArray,array_length,sizeof(tempArray[0]),sort_desc);
-                g_RearUltraSondDistance = tempArray[int(array_length/2) + 1];
-                // Serial.print("FronSonar: ");
-                // for(int j = 0;j<7;j++){
-                //     Serial.print("tab[");
-                //     Serial.print(j);
-                //     Serial.print("]= ");
-                //     Serial.print(RearUltrasondArray[j]);
-                // }
-                // Serial.print("  DYSTNS:   ");
-                // Serial.println(g_RearUltraSondDistance);
-            }
+         g_RearUltraSondDistance = uS;
+        // unsigned int tempArray[7];
+        //     for(int i =0;i<6;i++){
+        //             RearUltrasondArray[i]=RearUltrasondArray[i+1];
+        //             tempArray[i]=RearUltrasondArray[i];
+        //     }
+        //     RearUltrasondArray[6]=uS;
+        //     tempArray[6]=uS;
+        //     int array_length = sizeof(RearUltrasondArray) / sizeof(RearUltrasondArray[0]);
+        //     if(RearUltrasondArray[0]!=0){
+        //         qsort(tempArray,array_length,sizeof(tempArray[0]),sort_desc);
+        //         g_RearUltraSondDistance = tempArray[int(array_length/2) + 1];
+        //         // Serial.print("FronSonar: ");
+        //         // for(int j = 0;j<7;j++){
+        //         //     Serial.print("tab[");
+        //         //     Serial.print(j);
+        //         //     Serial.print("]= ");
+        //         //     Serial.print(RearUltrasondArray[j]);
+        //         // }
+        //         // Serial.print("  DYSTNS:   ");
+        //         // Serial.println(g_RearUltraSondDistance);
+        //     }
     }
 
 }
 
-void TaskSwitches(void *pvParameters __attribute__((unused))){
-    for(;;){
-        g_limitSwitchesSensors = 1;
-        for(int i = UpLeft;i<=BackLeft;i++){
-            g_limitSwitchesSensors = g_limitSwitchesSensors & digitalRead(i); 
-            g_limitSwitchesSensors <<=1;
-        }
-    }
-}
-void TaskExpander(){
-    for(;;){
-        g_ekspanderSensors = 1;
-        for(int i = 0;i<7;i++){
-            g_ekspanderSensors = g_ekspanderSensors & expander.digitalRead(i); 
-            g_ekspanderSensors <<=1;
-        }
-    }
-}
+// void TaskSwitches(void *pvParameters __attribute__((unused))){
+//     for(;;){
+//         g_limitSwitchesSensors = 1;
+//         for(int i = UpLeft;i<=BackLeft;i++){
+//             g_limitSwitchesSensors = g_limitSwitchesSensors & digitalRead(i); 
+//             g_limitSwitchesSensors <<=1;
+//         }
+//     }
+// }
+// void TaskExpander(){
+//     for(;;){
+//         g_ekspanderSensors = 1;
+//         for(int i = 0;i<7;i++){
+//             g_ekspanderSensors = g_ekspanderSensors & expander.digitalRead(i); 
+//             g_ekspanderSensors <<=1;
+//         }
+//     }
+// }
