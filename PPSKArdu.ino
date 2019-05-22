@@ -11,6 +11,8 @@
 #include <Wire.h>
 #pragma endregion includes
 
+#define DEBUG_MODE true
+
 #pragma region defines
 #define trigPin A2
 #define echoPin A1
@@ -61,8 +63,6 @@ NewPing sonarFront(trigPinFront,echoPinFront,MAX_DISTANCE);
 byte g_ekspanderSensors;
 byte g_limitSwitchesSensors;
 unsigned int g_FrontUltraSondDistance;
-//unsigned int FrontUltrasondArray[7]={0,0,0,0,0,0,0};
-//unsigned int RearUltrasondArray[7]={0,0,0,0,0,0,0};
 unsigned int g_RearUltraSondDistance;
 byte g_frontSonarState;
 byte g_rearSonarState;
@@ -70,7 +70,7 @@ byte g_SetSpeed;
 byte g_SetDirection;
 float yawOffset;
 
-bool workingIRsensors[7];
+//bool workingIRsensors[7];
 
 #pragma endregion globals
 
@@ -88,11 +88,7 @@ uint8_t fifoBuffer[64]; // FIFO storage buffer
 
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
-//VectorInt16 aa;         // [x, y, z]            accel sensor measurements
-//VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
-//VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
 VectorFloat gravity;    // [x, y, z]            gravity vector
-//float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 #pragma region Fsm
@@ -126,12 +122,19 @@ void on_movement(){
     //DEBUG: funkcja do sterowania serwami, bierze informacje o zadanej prędkosći i zadanym kierunku
     
     TaskMTU();
+    #ifdef DEBUG_MODE
+        g_SetSpeed = 190;
+        if(millis()-timeOfLastStateSwitch > 8000){
+            g_SetDirection = 220;
+        }
+    #endif
     controlEngines((ypr[0]-yawOffset)*180/M_PI,g_SetSpeed,g_SetDirection);
     
     if(millis()-timeLastLowPriorityCycle > 100){
         if(Serial.available()>0){
         byte readChar = Serial.read();
             if (readChar == CONST_SERIAL_RPI_STOP){
+                timeOfLastStateSwitch = millis();
                 fsm.trigger(FSM_STOP);
             }else if(readChar == CONST_SERIAL_RPI_SPEED){
                 //wait for data
@@ -150,7 +153,7 @@ void on_movement(){
     //TODO: Odkomentować, jak poprawimy czujniki IR
     bool noFloorDetected = false;
     for(int i = 0;i<7;i++){
-        if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
+        if(expander.digitalRead(i)==HIGH){//workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
             Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
             Serial.println(i);
             noFloorDetected = true;
@@ -158,7 +161,7 @@ void on_movement(){
     }
     if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
-        //fsm.trigger(FSM_STAIRS);
+        fsm.trigger(FSM_STAIRS);
     }
     bool obstacleDetected = false;
     for(int i = UpLeft;i<=BackLeft;i++){
@@ -196,9 +199,10 @@ void on_initialize_enter(){
     
     serialFlush();
 
-    for(int i = 0;i<7;i++){
-            workingIRsensors[i] = true;
-    }
+    //uncomment when using workingIRsensors
+    // for(int i = 0;i<7;i++){
+    //         workingIRsensors[i] = true;
+    // }
     timeOfLastStateSwitch = millis();
     Serial.println("on_initialize_enter");
 }
@@ -209,19 +213,28 @@ void on_initialize_exit(){
 void on_initialize(){
     byte cInput;
     TaskMTU();
-    for(int i = 0;i<7;i++){
-        if(expander.digitalRead(i)==HIGH){
-            workingIRsensors[i] = false;
-        }
-    }
+    //uncomment when using workingIRsensors
+    // for(int i = 0;i<7;i++){
+    //     if(expander.digitalRead(i)==HIGH){
+    //         workingIRsensors[i] = false;
+    //     }
+    // }
     if(millis()-timeOfLastStateSwitch > 5000){
         if(Serial.available()>0){
             cInput = Serial.read();
             if(cInput == CONST_SERIAL_RPI_INITIALIZED){
+                timeOfLastStateSwitch = millis();
                 fsm.trigger(FSM_MOVEMENT);
             }
         }
     }
+
+    #ifdef DEBUG_MODE
+        if(millis()-timeOfLastStateSwitch > 10000){
+            timeOfLastStateSwitch = millis();
+            fsm.trigger(FSM_MOVEMENT);
+        }
+    #endif
     
 }
 void on_stop_enter(){
@@ -230,17 +243,24 @@ void on_stop_enter(){
 }
 void on_stop(){
     boolean noFloorDetected = false;
+    #ifdef DEBUG_MODE
+        if(millis() - timeOfLastStateSwitch > 15000){
+            timeOfLastStateSwitch = millis();
+            fsm.trigger(FSM_MOVEMENT);
+        }
+    #endif
 
     if(Serial.available()>0){
     byte readChar = Serial.read();
         if (readChar = CONST_SERIAL_RPI_START){
+            timeOfLastStateSwitch = millis();
             fsm.trigger(FSM_MOVEMENT);
         }
     }
 
     //DEBUG: Odkomentować, jak poprawię czujniki
     for(int i = 0;i<7;i++){
-        if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
+        if(expander.digitalRead(i)==HIGH){ //if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
             Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
             Serial.println(i);
             noFloorDetected = true;
@@ -287,6 +307,15 @@ void on_obstacle(){
                 controlEngines(0,speed,128);  
         }
     }
+
+    #ifdef DEBUG_MODE
+        if(millis()-timeOfLastStateSwitch > 10000){
+            controlEngines(0,60,128);
+            delay(2000);
+            controlEngines(0,128,60);
+            delay(2000);
+        }
+    #endif
     bool obstacleDetected = false;
     TaskFrontUltasond();
     TaskRearUltrasond();  
@@ -315,10 +344,18 @@ void on_stairs_detected(){
                 controlEngines(0,speed,128);  
         }
     }
+    #ifdef DEBUG_MODE
+        if(millis()-timeOfLastStateSwitch > 3000){
+            controlEngines(0,60,128);
+            delay(2000);
+            controlEngines(0,128,60);
+            delay(2000);
+        }
+    #endif
     
     bool noFloorDetected = false;
     for( int i = 0;i<7;i++){
-        if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
+        if(expander.digitalRead(i)==HIGH){//workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
             noFloorDetected = true;
         }
     }
@@ -372,7 +409,6 @@ void setupMPU(){
         // turn on the DMP, now that it's ready
         Serial.println(F("Enabling DMP..."));
         mpu.setDMPEnabled(true);
-
         // enable Arduino interrupt detection
         Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
         Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
@@ -463,14 +499,14 @@ void stopEngines(){
 }
 
 void controlEngines(float yaw,byte speed, byte direction){
-    int rightSpeed = rightStop + ((speed - 128)*CONST_SPEED_FACTOR + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
+    int rightSpeed = rightStop - ((speed - 128)*CONST_SPEED_FACTOR + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
      ((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
     
     right.write(rightSpeed);
 
     
 
-    int leftSpeed = leftStop - ((speed - 128)*CONST_SPEED_FACTOR + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
+    int leftSpeed = leftStop + ((speed - 128)*CONST_SPEED_FACTOR + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
      ((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
     left.write(leftSpeed);
 }
