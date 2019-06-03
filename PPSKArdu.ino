@@ -36,10 +36,19 @@
 #define CONST_SERIAL_RPI_SPEED 51
 #define CONST_SERIAL_RPI_DIRECTION 52
 
+#define CONST_STATE_MOVEMENT 70
+#define CONST_STATE_STOP 71
+#define CONST_STATE_STAIRS 72
+#define CONST_STATE_OBSTACLE 73
+#define CONST_OBSTACLE_SWITCHES 74
+#define CONST_OBSTACLE_SONAR_FRONT 75
+#define CONST_OBSTACLE_SONAR_BACK 76
+#define CONST_FLOOR 77
+
 //TODO: Dobrac wspolczynniki
 #define CONST_SPEED_FACTOR 0.315
 #define CONST_DIRECT_FACTIOR 1.4173 //180/127
-#define CONST_STEERING_FACTOR 0.05
+#define CONST_STEERING_FACTOR 0.5
 
 #pragma endregion defines
 
@@ -115,7 +124,11 @@ Fsm fsm(&state_initialize);
 
 
 void on_movement_enter(){
+    #ifdef DEBUG_MODE
     Serial.println("on_movement_enter");
+    #else
+    Serial.write(CONST_STATE_MOVEMENT);
+    #endif
     //TODO: wysyłanie informacji o zmianie stanu
 }
 void on_movement(){
@@ -123,10 +136,18 @@ void on_movement(){
     
     TaskMTU();
     #ifdef DEBUG_MODE
-        g_SetSpeed = 190;
-        if(millis()-timeOfLastStateSwitch > 8000){
-            g_SetDirection = 220;
+        g_SetSpeed = 180;
+        g_SetDirection = 127;
+        if(millis()-timeOfLastStateSwitch > 30000){
+
+            g_SetDirection = 60;
         }
+        if(millis()-timeOfLastStateSwitch > 70000){
+
+            g_SetSpeed = 160;
+        }
+        Serial.println((ypr[0]-yawOffset)*180/M_PI);
+        Serial.println((g_SetDirection - 128) * CONST_DIRECT_FACTIOR);
     #endif
     controlEngines((ypr[0]-yawOffset)*180/M_PI,g_SetSpeed,g_SetDirection);
     
@@ -148,7 +169,7 @@ void on_movement(){
                     Serial.println(g_SetDirection);   
             }
         }
-    }
+    } 
     
     //TODO: Odkomentować, jak poprawimy czujniki IR
     bool noFloorDetected = false;
@@ -177,6 +198,11 @@ void on_movement(){
     }
     if(millis()-timeLastLowPriorityCycle > 100){
         TaskFrontUltasond();
+
+        //Send info to Rasp
+        byte writePacket1[2] = {CONST_OBSTACLE_SONAR_FRONT,g_FrontUltraSondDistance};
+        Serial.write(writePacket1,2);
+
         if(g_FrontUltraSondDistance < g_ultrasondTreshold && g_FrontUltraSondDistance != 0 && millis() - timeOfLastStateSwitch > 50){
             timeOfLastStateSwitch = millis();
             Serial.println("Za maly dystans do przeszkody z przodu");
@@ -184,6 +210,11 @@ void on_movement(){
             fsm.trigger(FSM_OBSTACLE);
         }
         TaskRearUltrasond();  
+
+        //Send info to Rasp
+        byte writePacket[2] = {CONST_OBSTACLE_SONAR_BACK,g_RearUltraSondDistance};
+        Serial.write(writePacket,2);
+
         if(g_RearUltraSondDistance < g_ultrasondTreshold && g_RearUltraSondDistance != 0 && millis() - timeOfLastStateSwitch > 50){
             timeOfLastStateSwitch = millis();
             Serial.println("Za maly dystans do przeszkody z tyłu");
@@ -193,7 +224,9 @@ void on_movement(){
     }
 }
 void on_movement_exit(){
+    #ifdef DEBUG_MODE
     Serial.println("on_movement_exit");
+    #endif
 }
 void on_initialize_enter(){
     
@@ -239,12 +272,16 @@ void on_initialize(){
 }
 void on_stop_enter(){
     stopEngines();
+    #ifdef DEBUG_MODE
     Serial.println("on_stop_enter");
+    #else
+    Serial.write(CONST_STATE_STOP);
+    #endif
 }
 void on_stop(){
     boolean noFloorDetected = false;
     #ifdef DEBUG_MODE
-        if(millis() - timeOfLastStateSwitch > 15000){
+        if(millis() - timeOfLastStateSwitch > 30000){
             timeOfLastStateSwitch = millis();
             fsm.trigger(FSM_MOVEMENT);
         }
@@ -308,14 +345,14 @@ void on_obstacle(){
         }
     }
 
-    #ifdef DEBUG_MODE
-        if(millis()-timeOfLastStateSwitch > 10000){
-            controlEngines(0,60,128);
-            delay(2000);
-            controlEngines(0,128,60);
-            delay(2000);
-        }
-    #endif
+    // #ifdef DEBUG_MODE
+    //     if(millis()-timeOfLastStateSwitch > 10000){
+    //         controlEngines(0,60,128);
+    //         delay(2000);
+    //         controlEngines(0,128,60);
+    //         delay(2000);
+    //     }
+    // #endif
     bool obstacleDetected = false;
     TaskFrontUltasond();
     TaskRearUltrasond();  
@@ -344,14 +381,14 @@ void on_stairs_detected(){
                 controlEngines(0,speed,128);  
         }
     }
-    #ifdef DEBUG_MODE
-        if(millis()-timeOfLastStateSwitch > 3000){
-            controlEngines(0,60,128);
-            delay(2000);
-            controlEngines(0,128,60);
-            delay(2000);
-        }
-    #endif
+    // #ifdef DEBUG_MODE
+    //     if(millis()-timeOfLastStateSwitch > 3000){
+    //         controlEngines(0,128,0);
+    //         delay(2000);
+    //         controlEngines(0,128,255);
+    //         delay(2000);
+    //     }
+    // #endif
     
     bool noFloorDetected = false;
     for( int i = 0;i<7;i++){
@@ -499,16 +536,22 @@ void stopEngines(){
 }
 
 void controlEngines(float yaw,byte speed, byte direction){
-    int rightSpeed = rightStop - ((speed - 128)*CONST_SPEED_FACTOR + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
-     ((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
-    
+    /*
+    CONST_SPEED_FACTOR 0.315
+    CONST_DIRECT_FACTIOR 1.4173 //180/127
+    CONST_STEERING_FACTOR 0.0511
+    */
+    int rightSpeed = rightStop - ((speed - 128)*CONST_SPEED_FACTOR) + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
+     (((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
+    Serial.println(rightSpeed);
     right.write(rightSpeed);
 
     
 
-    int leftSpeed = leftStop + ((speed - 128)*CONST_SPEED_FACTOR + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
-     ((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
+    int leftSpeed = leftStop + ((speed - 128)*CONST_SPEED_FACTOR )+ CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
+     (((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
     left.write(leftSpeed);
+    Serial.println(leftSpeed);
 }
 
 void setup() {
