@@ -124,6 +124,8 @@ Fsm fsm(&state_initialize);
 
 
 void on_movement_enter(){
+    attachServo();
+    stopEngines();
     #ifdef DEBUG_MODE
     Serial.println("on_movement_enter");
     #else
@@ -271,7 +273,9 @@ void on_initialize(){
     
 }
 void on_stop_enter(){
+
     stopEngines();
+    detachServo();
     #ifdef DEBUG_MODE
     Serial.println("on_stop_enter");
     #else
@@ -325,6 +329,7 @@ void on_stop(){
     }  
 }
 void on_stop_exit(){
+    attachServo();
     Serial.println("on_stop_exit");
 }
 
@@ -531,8 +536,10 @@ byte restartRearSonar(byte previousState){
     return previousState;
 }
 void stopEngines(){
-    right.write(rightStop);//stop signal
-    left.write(leftStop);//stop signal
+    if(right.attached()){
+        right.write(rightStop);//stop signal
+        left.write(leftStop);//stop signal
+    }
 }
 
 void controlEngines(float yaw,byte speed, byte direction){
@@ -598,10 +605,22 @@ void setup() {
   expander.pinMode(5,INPUT_PULLUP);
   expander.pinMode(6,INPUT_PULLUP);
   
-  left.attach(10, 1000, 1800); //right servo motor
-  right.attach(9, 100, 1800); //l//
 
-  stopEngines();
+
+}
+
+void attachServo(){
+    if(!right.attached()){
+        left.attach(10, 1000, 1800); //right servo motor
+        right.attach(9, 100, 1800); //l//
+    }
+}
+
+void detachServo(){
+    if(right.attached()){
+        left.detach();
+        right.detach();
+    }
 }
 
 void loop(){
