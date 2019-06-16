@@ -44,7 +44,8 @@
 #define CONST_OBSTACLE_SONAR_FRONT 75
 #define CONST_OBSTACLE_SONAR_BACK 76
 #define CONST_FLOOR 77
-
+#define CONST_LIMIT 78
+#define CONST_MPU 79
 //TODO: Dobrac wspolczynniki
 #define CONST_SPEED_FACTOR 0.315
 #define CONST_DIRECT_FACTIOR 1.4173 //180/127
@@ -71,8 +72,8 @@ NewPing sonarFront(trigPinFront,echoPinFront,MAX_DISTANCE);
 
 byte g_ekspanderSensors;
 byte g_limitSwitchesSensors;
-unsigned int g_FrontUltraSondDistance;
-unsigned int g_RearUltraSondDistance;
+byte g_FrontUltraSondDistance;
+byte g_RearUltraSondDistance;
 byte g_frontSonarState;
 byte g_rearSonarState;
 byte g_SetSpeed;
@@ -129,7 +130,7 @@ void on_movement_enter(){
     #ifdef DEBUG_MODE
     Serial.println("on_movement_enter");
     #else
-    Serial.write(CONST_STATE_MOVEMENT);
+    Serial.write(uint8_t(CONST_STATE_MOVEMENT));
     #endif
     //TODO: wysyłanie informacji o zmianie stanu
 }
@@ -148,8 +149,8 @@ void on_movement(){
 
             g_SetSpeed = 160;
         }
-        Serial.println((ypr[0]-yawOffset)*180/M_PI);
-        Serial.println((g_SetDirection - 128) * CONST_DIRECT_FACTIOR);
+        //Serial.println((ypr[0]-yawOffset)*180/M_PI);
+        //Serial.println((g_SetDirection - 128) * CONST_DIRECT_FACTIOR);
     #endif
     controlEngines((ypr[0]-yawOffset)*180/M_PI,g_SetSpeed,g_SetDirection);
     
@@ -172,28 +173,44 @@ void on_movement(){
             }
         }
     } 
-    
-    //TODO: Odkomentować, jak poprawimy czujniki IR
     bool noFloorDetected = false;
-    for(int i = 0;i<7;i++){
-        if(expander.digitalRead(i)==HIGH){//workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
-            Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
-            Serial.println(i);
-            noFloorDetected = true;
-        }
+    GetFloorSensors();
+    if (g_ekspanderSensors != 0){
+        noFloorDetected = true;
     }
-    if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
+    if(noFloorDetected && millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
+        byte writePack[2] = {uint8_t(CONST_FLOOR), g_ekspanderSensors};
+        Serial.write(writePack,2);
         fsm.trigger(FSM_STAIRS);
     }
     bool obstacleDetected = false;
-    for(int i = UpLeft;i<=BackLeft;i++){
-        if(digitalRead(i)==LOW){
-            Serial.print("Wykryto zderzenie z przeszkoda na czujniku nr ");
-            Serial.println(i);
-            obstacleDetected = true;
-        }
+    GetLimitSwitchSensors();
+    if(g_limitSwitchesSensors < 15){
+        byte writePack1[2] = {uint8_t(CONST_LIMIT), g_ekspanderSensors};
+        Serial.write(writePack1,2);
+        obstacleDetected = true;
     }
+    // bool noFloorDetected = false;
+    // for(int i = 0;i<7;i++){
+    //     if(expander.digitalRead(i)==HIGH){//workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
+    //         Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
+    //         Serial.println(i);
+    //         noFloorDetected = true;
+    //     }
+    // }
+    // if(noFloorDetected & millis() - timeOfLastStateSwitch > 50){
+    //     timeOfLastStateSwitch = millis();
+    //     fsm.trigger(FSM_STAIRS);
+    // }
+    // bool obstacleDetected = false;
+    // for(int i = UpLeft;i<=BackLeft;i++){
+    //     if(digitalRead(i)==LOW){
+    //         Serial.print("Wykryto zderzenie z przeszkoda na czujniku nr ");
+    //         Serial.println(i);
+    //         obstacleDetected = true;
+    //     }
+    // }
     if(obstacleDetected == true && millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
         fsm.trigger(FSM_OBSTACLE);
@@ -202,7 +219,7 @@ void on_movement(){
         TaskFrontUltasond();
 
         //Send info to Rasp
-        byte writePacket1[2] = {CONST_OBSTACLE_SONAR_FRONT,g_FrontUltraSondDistance};
+        byte writePacket1[2] = {uint8_t(CONST_OBSTACLE_SONAR_FRONT),g_FrontUltraSondDistance};
         Serial.write(writePacket1,2);
 
         if(g_FrontUltraSondDistance < g_ultrasondTreshold && g_FrontUltraSondDistance != 0 && millis() - timeOfLastStateSwitch > 50){
@@ -214,7 +231,7 @@ void on_movement(){
         TaskRearUltrasond();  
 
         //Send info to Rasp
-        byte writePacket[2] = {CONST_OBSTACLE_SONAR_BACK,g_RearUltraSondDistance};
+        byte writePacket[2] = {uint8_t(CONST_OBSTACLE_SONAR_BACK),g_RearUltraSondDistance};
         Serial.write(writePacket,2);
 
         if(g_RearUltraSondDistance < g_ultrasondTreshold && g_RearUltraSondDistance != 0 && millis() - timeOfLastStateSwitch > 50){
@@ -279,7 +296,7 @@ void on_stop_enter(){
     #ifdef DEBUG_MODE
     Serial.println("on_stop_enter");
     #else
-    Serial.write(CONST_STATE_STOP);
+    Serial.write(uint8_t(CONST_STATE_STOP));
     #endif
 }
 void on_stop(){
@@ -300,25 +317,37 @@ void on_stop(){
     }
 
     //DEBUG: Odkomentować, jak poprawię czujniki
-    for(int i = 0;i<7;i++){
-        if(expander.digitalRead(i)==HIGH){ //if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
-            Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
-            Serial.println(i);
-            noFloorDetected = true;
-        }
+    GetFloorSensors();
+    if(g_ekspanderSensors != 0 ){
+        noFloorDetected = true;
     }
+    // for(int i = 0;i<7;i++){
+    //     if(expander.digitalRead(i)==HIGH){ //if(workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
+    //         Serial.print("Wykryto brak podlogi pod czujnikiem nr ");
+    //         Serial.println(i);
+    //         noFloorDetected = true;
+    //     }
+    // }
     if(noFloorDetected && millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
+        byte writePacket[2] = {uint8_t(CONST_FLOOR), g_ekspanderSensors};
+        Serial.write(writePacket,2);
         fsm.trigger(FSM_STAIRS);
     }
     bool obstacleDetected = false;
-    for(int i = UpLeft;i<=BackLeft;i++){
-        if(digitalRead(i)==LOW){
-            Serial.print("Wykryto zderzenie z przeszkoda na czujniku nr ");
-            Serial.println(i);
-            obstacleDetected = true;
-        }
+    GetLimitSwitchSensors();
+    if(g_limitSwitchesSensors < 15){
+        byte writePacket1[2] = {uint8_t(CONST_LIMIT), g_ekspanderSensors};
+        Serial.write(writePacket1,2);
+        obstacleDetected = true;
     }
+    // for(int i = UpLeft;i<=BackLeft;i++){
+    //     if(digitalRead(i)==LOW){
+    //         Serial.print("Wykryto zderzenie z przeszkoda na czujniku nr ");
+    //         Serial.println(i);
+    //         obstacleDetected = true;
+    //     }
+    // }
     TaskFrontUltasond();
     TaskRearUltrasond();
     if(g_FrontUltraSondDistance < g_ultrasondTreshold || g_RearUltraSondDistance < g_ultrasondTreshold)
@@ -328,6 +357,7 @@ void on_stop(){
         fsm.trigger(FSM_OBSTACLE);
     }  
 }
+
 void on_stop_exit(){
     attachServo();
     Serial.println("on_stop_exit");
@@ -361,10 +391,9 @@ void on_obstacle(){
     bool obstacleDetected = false;
     TaskFrontUltasond();
     TaskRearUltrasond();  
-    for(int i = UpLeft;i<=BackLeft;i++){
-        if(digitalRead(i)==LOW){
-            obstacleDetected = true;
-        }
+    GetLimitSwitchSensors();
+    if(g_limitSwitchesSensors < 15){
+        obstacleDetected = true;
     }
     if(obstacleDetected == false && millis()-timeOfLastStateSwitch > 50 && g_FrontUltraSondDistance > g_ultrasondTreshold && g_RearUltraSondDistance > g_ultrasondTreshold){ 
         timeOfLastStateSwitch = millis();
@@ -396,10 +425,14 @@ void on_stairs_detected(){
     // #endif
     
     bool noFloorDetected = false;
-    for( int i = 0;i<7;i++){
-        if(expander.digitalRead(i)==HIGH){//workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
-            noFloorDetected = true;
-        }
+    // for( int i = 0;i<7;i++){
+    //     if(expander.digitalRead(i)==HIGH){//workingIRsensors[i] == true && expander.digitalRead(i)==HIGH){
+    //         noFloorDetected = true;
+    //     }
+    // }
+    GetFloorSensors();
+    if(g_ekspanderSensors != 0) {
+        noFloorDetected = true;
     }
     if(!noFloorDetected && millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
@@ -408,10 +441,12 @@ void on_stairs_detected(){
 }
 void on_stairs_detected_enter(){
     stopEngines();
-    Serial.println("on_stairs_detected_enter");
+    Serial.write(uint8_t(CONST_STATE_STAIRS));
+
+    //Serial.println("on_stairs_detected_enter");
 }
 void on_stairs_detected_exit(){
-    Serial.println("on_stairs_detected_exit");
+    //Serial.println("on_stairs_detected_exit");
 }
 
 
@@ -721,22 +756,18 @@ void TaskRearUltrasond(){
 
 }
 
-// void TaskSwitches(void *pvParameters __attribute__((unused))){
-//     for(;;){
-//         g_limitSwitchesSensors = 1;
-//         for(int i = UpLeft;i<=BackLeft;i++){
-//             g_limitSwitchesSensors = g_limitSwitchesSensors & digitalRead(i); 
-//             g_limitSwitchesSensors <<=1;
-//         }
-//     }
-// }
-// void TaskExpander(){
-//     for(;;){
-//         g_ekspanderSensors = 1;
-//         for(int i = 0;i<7;i++){
-//             g_ekspanderSensors = g_ekspanderSensors & expander.digitalRead(i); 
-//             g_ekspanderSensors <<=1;
-//         }
-//     }
-// }
+void GetLimitSwitchSensors(){
+    g_limitSwitchesSensors = 1;
+    for(int i = UpLeft;i<=BackLeft;i++){
+        g_limitSwitchesSensors = g_limitSwitchesSensors & digitalRead(i); 
+        g_limitSwitchesSensors <<=1;
+    }
+}
+void GetFloorSensors(){
+    g_ekspanderSensors = 1;
+    for(int i = 0;i<7;i++){
+        g_ekspanderSensors = g_ekspanderSensors & expander.digitalRead(i); 
+        g_ekspanderSensors <<=1;
+    }
+}
  
