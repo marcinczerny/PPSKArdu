@@ -4,6 +4,7 @@ import serial
 import constants
 #import pygame
 import os
+import time
 from std_msgs.msg import String, Int16, Float32 
 
 
@@ -35,21 +36,37 @@ class state:
         return self.limitSwitches
     
 
-__ser__ = None
+ser = None
 def callback(data):
-    global __ser__
+    global ser
     rospy.loginfo(rospy.get_caller_id() + data.data)
 
 def receiveOrders(data):
-    global __ser__
+    global ser
     #if data.data =  constants.   
 
 def talker():
-    global __ser__
+    global ser
     robotState = state()
     rospy.loginfo("Otwieramy port!")
-    __ser__ = serial.Serial('/dev/ttyACM0',115200)
-    __ser__.flushInput()
+    ser = serial.Serial()
+    ser.port = '/dev/ttyACM0'
+    ser.baudrate = 115200
+    ser.setDTR(0)
+    ser.timeout = 1
+    #bytesize=serial.EIGHTBITS,parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,timeout=0.5,xonxoff=0,rtscts=0,dsrdtr=0)
+    if (ser.isOpen() == False):
+        ser.open()
+    ser.flushInput()
+    #ser.baudrate = 115200
+    #ser.port = "/dev/ttyACM0"
+    #ser.setDTR(0)
+    #ser.open()
+
+    ser.reset_input_buffer()
+    ser.reset_output_buffer()
+    #ser = serial.Serial('/dev/ttyACM0',115200)
+    #ser.flushInput()
     rospy.loginfo("Otwarlismy port!")
     pub = rospy.Publisher('RaspberryControlWriter',String,queue_size=10)
     rospy.init_node('talker',anonymous=True)
@@ -58,11 +75,14 @@ def talker():
     pub.publish("JEDZIEMY!")
     rospy.loginfo("Jedziemy!")
     rospy.Subscriber("RaspberryControlReader", String, callback)
-    __ser__.write(bytearray([constants.CONST_SERIAL_RPI_INITIALIZED]))
+    ser.write(bytearray([constants.CONST_SERIAL_RPI_INITIALIZED]))
+    time.sleep(1)
     while not rospy.is_shutdown():
         try:
-            while __ser__.in_waiting:
-                function = __ser__.read(1)
+            wait = ser.in_waiting
+            while (wait > 0):
+                function = ord(ser.read(1)) 
+                rospy.loginfo(function)
                 if function == constants.CONST_STATE_MOVEMENT:
                     pub.publish("STATE MOVEMENT")
                     rospy.loginfo("MOV")
@@ -85,28 +105,29 @@ def talker():
                     rospy.loginfo("STOP")
                     robotState.ChangeState(constants.CONST_STATE_STOP)
                 elif function == constants.CONST_FLOOR:
-                    while not __ser__.in_waiting:
+                    while ser.in_waiting == 0:
                         pass
-                    floorSensors = __ser__.read(1)
+                    floorSensors = ord(ser.read(1))
                     robotState.ChangeFloorSensors(floorSensors)
                 elif function == constants.CONST_OBSTACLE_SONAR_BACK:
-                    while not __ser__.in_waiting:
+                    while ser.in_waiting == 0:
                         pass
-                    backSonar = __ser__.read(1)
+                    backSonar = ord(ser.read(1))
                     robotState.ChangeRearDistance(backSonar)
                 elif function == constants.CONST_OBSTACLE_SONAR_FRONT:
-                    while not __ser__.in_waiting:
+                    while ser.in_waiting == 0:
                         pass
-                    frontSonar = __ser__.read(1)
+                    frontSonar = ord(ser.read(1))
                     robotState.ChangeFrontDistance(frontSonar)
                 elif function == constants.CONST_OBSTACLE_SWITCHES:
-                    while not __ser__.in_waiting:
+                    while ser.in_waiting == 0:
                         pass
-                    limitSwitches = __ser__.read(1)
+                    limitSwitches = ord(ser.read(1))
                     robotState.ChangeLimitSwitches(limitSwitches)
-            rate.sleep()
+                rate.sleep()
         except rospy.ROSInterruptException:
-            pass        
+            pass
+    ser.close() 
 
 
 if __name__ == '__main__':

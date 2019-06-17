@@ -128,7 +128,8 @@ void on_movement_enter(){
     attachServo();
     stopEngines();
     #ifdef DEBUG_MODE
-    Serial.println("on_movement_enter");
+    //Serial.println("on_movement_enter");
+    Serial.write(uint8_t(CONST_STATE_MOVEMENT));
     #else
     Serial.write(uint8_t(CONST_STATE_MOVEMENT));
     #endif
@@ -164,12 +165,12 @@ void on_movement(){
                 //wait for data
                 while(Serial.available()==0){}
                     g_SetSpeed = Serial.read();
-                    Serial.println(g_SetSpeed);   
+                    //Serial.println(g_SetSpeed);   
             }else if(readChar == CONST_SERIAL_RPI_DIRECTION){
                 //wait for data
                 while(Serial.available()==0){}
                     g_SetDirection = Serial.read();
-                    Serial.println(g_SetDirection);   
+                    //Serial.println(g_SetDirection);   
             }
         }
     } 
@@ -224,8 +225,8 @@ void on_movement(){
 
         if(g_FrontUltraSondDistance < g_ultrasondTreshold && g_FrontUltraSondDistance != 0 && millis() - timeOfLastStateSwitch > 50){
             timeOfLastStateSwitch = millis();
-            Serial.println("Za maly dystans do przeszkody z przodu");
-            Serial.println(g_FrontUltraSondDistance);
+            //Serial.println("Za maly dystans do przeszkody z przodu");
+            //Serial.println(g_FrontUltraSondDistance);
             fsm.trigger(FSM_OBSTACLE);
         }
         TaskRearUltrasond();  
@@ -236,7 +237,7 @@ void on_movement(){
 
         if(g_RearUltraSondDistance < g_ultrasondTreshold && g_RearUltraSondDistance != 0 && millis() - timeOfLastStateSwitch > 50){
             timeOfLastStateSwitch = millis();
-            Serial.println("Za maly dystans do przeszkody z tyłu");
+            //Serial.println("Za maly dystans do przeszkody z tyłu");
             fsm.trigger(FSM_OBSTACLE);
         }
         timeLastLowPriorityCycle = millis();
@@ -244,7 +245,7 @@ void on_movement(){
 }
 void on_movement_exit(){
     #ifdef DEBUG_MODE
-    Serial.println("on_movement_exit");
+    //Serial.println("on_movement_exit");
     #endif
 }
 void on_initialize_enter(){
@@ -256,11 +257,11 @@ void on_initialize_enter(){
     //         workingIRsensors[i] = true;
     // }
     timeOfLastStateSwitch = millis();
-    Serial.println("on_initialize_enter");
+    //Serial.println("on_initialize_enter");
 }
 void on_initialize_exit(){
     yawOffset = ypr[0];
-    Serial.println("on_initialize_exit");
+    //Serial.println("on_initialize_exit");
 }
 void on_initialize(){
     byte cInput;
@@ -294,7 +295,8 @@ void on_stop_enter(){
     stopEngines();
     detachServo();
     #ifdef DEBUG_MODE
-    Serial.println("on_stop_enter");
+    //Serial.println("on_stop_enter");
+    Serial.write(uint8_t(CONST_STATE_STOP));
     #else
     Serial.write(uint8_t(CONST_STATE_STOP));
     #endif
@@ -360,12 +362,12 @@ void on_stop(){
 
 void on_stop_exit(){
     attachServo();
-    Serial.println("on_stop_exit");
+    //Serial.println("on_stop_exit");
 }
 
 void on_obstacle_detected_enter(){
     stopEngines();
-    Serial.println("on_obstacle_detected_enter");
+    //Serial.println("on_obstacle_detected_enter");
 }
 void on_obstacle(){
     //DEBUG: Sprawdzić cofanie
@@ -401,7 +403,7 @@ void on_obstacle(){
     }
 }
 void on_obstacle_detected_exit(){
-    Serial.println("on_obstacle_detected_exit");
+    //Serial.println("on_obstacle_detected_exit");
 }
 void on_stairs_detected(){
     //DEBUG: Sprawdzić cofanie
@@ -463,16 +465,16 @@ void dmpDataReady() {
 
 void setupMPU(){
 
-    Serial.println(F("Initializing I2C devices..."));
+    //Serial.println(F("Initializing I2C devices..."));
     mpu.initialize();
     pinMode(INTERRUPT_PIN, INPUT);
 
     // verify connection
-    Serial.println(F("Testing device connections..."));
-    Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
+    //Serial.println(F("Testing device connections..."));
+    //Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
     // load and configure the DMP
-    Serial.println(F("Initializing DMP..."));
+    //Serial.println(F("Initializing DMP..."));
     devStatus = mpu.dmpInitialize();
 
     // supply your own gyro offsets here, scaled for min sensitivity
@@ -484,17 +486,17 @@ void setupMPU(){
 	 // make sure it worked (returns 0 if so)
     if (devStatus == 0) {
         // turn on the DMP, now that it's ready
-        Serial.println(F("Enabling DMP..."));
+        //Serial.println(F("Enabling DMP..."));
         mpu.setDMPEnabled(true);
         // enable Arduino interrupt detection
-        Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
-        Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
-        Serial.println(F(")..."));
+        //Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
+        //Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
+        //Serial.println(F(")..."));
         attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
         mpuIntStatus = mpu.getIntStatus();
 
         // set our DMP Ready flag so the main loop() function knows it's okay to use it
-        Serial.println(F("DMP ready! Waiting for first interrupt..."));
+        //Serial.println(F("DMP ready! Waiting for first interrupt..."));
         dmpReady = true;
 
         // get expected DMP packet size for later comparison
@@ -504,9 +506,9 @@ void setupMPU(){
         // 1 = initial memory load failed
         // 2 = DMP configuration updates failed
         // (if it's going to break, usually the code will be 1)
-        Serial.print(F("DMP Initialization failed (code "));
-        Serial.print(devStatus);
-        Serial.println(F(")"));
+        //Serial.print(F("DMP Initialization failed (code "));
+        //Serial.print(devStatus);
+        //Serial.println(F(")"));
 
     // configure LED for output
     pinMode(LED_PIN, OUTPUT);
@@ -585,7 +587,7 @@ void controlEngines(float yaw,byte speed, byte direction){
     */
     int rightSpeed = rightStop - ((speed - 128)*CONST_SPEED_FACTOR) + CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
      (((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
-    Serial.println(rightSpeed);
+    //Serial.println(rightSpeed);
     right.write(rightSpeed);
 
     
@@ -593,7 +595,7 @@ void controlEngines(float yaw,byte speed, byte direction){
     int leftSpeed = leftStop + ((speed - 128)*CONST_SPEED_FACTOR )+ CONST_SPEED_FACTOR*CONST_STEERING_FACTOR *
      (((direction - 128) * CONST_DIRECT_FACTIOR) - yaw);
     left.write(leftSpeed);
-    Serial.println(leftSpeed);
+    //Serial.println(leftSpeed);
 }
 
 void setup() {
@@ -688,7 +690,7 @@ void TaskMTU(){
         // reset so we can continue cleanly
         mpu.resetFIFO();
         fifoCount = mpu.getFIFOCount();
-        Serial.println(F("FIFO overflow!"));
+        //Serial.println(F("FIFO overflow!"));
 
     // otherwise, check for DMP data ready interrupt (this should happen frequently)
     } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
@@ -730,7 +732,7 @@ void TaskFrontUltasond(  )  // This is a Task.
         
         if (uS==0)
         {
-            Serial.println("Reseutuje przedni sonar");
+            //Serial.println("Reseutuje przedni sonar");
             g_frontSonarState = restartFrontSonar(4);
         }else{
             g_FrontUltraSondDistance = uS;
