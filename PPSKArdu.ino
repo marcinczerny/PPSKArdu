@@ -11,7 +11,7 @@
 #include <Wire.h>
 #pragma endregion includes
 
-#define DEBUG_MODE true
+#define DEBUG_MODE false
 
 #pragma region defines
 #define trigPin A2
@@ -155,7 +155,7 @@ void on_movement(){
     #endif
     controlEngines((ypr[0]-yawOffset)*180/M_PI,g_SetSpeed,g_SetDirection);
     
-    if(millis()-timeLastLowPriorityCycle > 100){
+    if(millis()-timeLastLowPriorityCycle > 500){
         if(Serial.available()>0){
         byte readChar = Serial.read();
             if (readChar == CONST_SERIAL_RPI_STOP){
@@ -216,7 +216,7 @@ void on_movement(){
         timeOfLastStateSwitch = millis();
         fsm.trigger(FSM_OBSTACLE);
     }
-    if(millis()-timeLastLowPriorityCycle > 100){
+    if(millis()-timeLastLowPriorityCycle > 500){
         TaskFrontUltasond();
 
         //Send info to Rasp
@@ -251,7 +251,7 @@ void on_movement_exit(){
 void on_initialize_enter(){
     
     serialFlush();
-
+    serial.write(uint8_t(48));
     //uncomment when using workingIRsensors
     // for(int i = 0;i<7;i++){
     //         workingIRsensors[i] = true;
@@ -277,7 +277,7 @@ void on_initialize(){
             cInput = Serial.read();
             if(cInput == CONST_SERIAL_RPI_INITIALIZED){
                 timeOfLastStateSwitch = millis();
-                fsm.trigger(FSM_MOVEMENT);
+                fsm.trigger(FSM_STOP);
             }
         }
     }
@@ -285,7 +285,7 @@ void on_initialize(){
     #ifdef DEBUG_MODE
         if(millis()-timeOfLastStateSwitch > 10000){
             timeOfLastStateSwitch = millis();
-            fsm.trigger(FSM_MOVEMENT);
+            fsm.trigger(FSM_STOP);
         }
     #endif
     
@@ -366,6 +366,7 @@ void on_stop_exit(){
 }
 
 void on_obstacle_detected_enter(){
+    Serial.write(uint8_t(CONST_STATE_OBSTACLE));
     stopEngines();
     //Serial.println("on_obstacle_detected_enter");
 }
@@ -607,7 +608,7 @@ void setup() {
     g_SetSpeed = 128;
     g_SetDirection = 128;
 
-    fsm.add_transition(&state_initialize, &state_movement,FSM_MOVEMENT,NULL);
+    fsm.add_transition(&state_initialize, &state_stop,FSM_STOP,NULL);
     fsm.add_transition(&state_movement,&state_stop,FSM_STOP,NULL);
     fsm.add_transition(&state_movement,&state_obstacle_detected,FSM_OBSTACLE,NULL);
     fsm.add_transition(&state_movement,&state_stairs_detected,FSM_STAIRS,NULL);
@@ -759,17 +760,17 @@ void TaskRearUltrasond(){
 }
 
 void GetLimitSwitchSensors(){
-    g_limitSwitchesSensors = 1;
+    g_limitSwitchesSensors = B00000000;
     for(int i = UpLeft;i<=BackLeft;i++){
-        g_limitSwitchesSensors = g_limitSwitchesSensors & digitalRead(i); 
         g_limitSwitchesSensors <<=1;
+        g_limitSwitchesSensors = g_limitSwitchesSensors | digitalRead(i); 
     }
 }
 void GetFloorSensors(){
-    g_ekspanderSensors = 1;
+    g_ekspanderSensors = B00000000;
     for(int i = 0;i<7;i++){
-        g_ekspanderSensors = g_ekspanderSensors & expander.digitalRead(i); 
         g_ekspanderSensors <<=1;
+        g_ekspanderSensors = g_ekspanderSensors | expander.digitalRead(i);    
     }
 }
  
