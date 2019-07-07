@@ -3,11 +3,15 @@ import rospy
 import serial
 import constants
 import datetime as dt
-#import pygame
+import multiprocessing
 import os
 import time
+   
 from std_msgs.msg import String, Int16, Float32, Int16MultiArray
 #from ppsk.msg import Control
+
+
+
 class order:
     def __init__(self):
         self.order = []
@@ -52,7 +56,7 @@ class order:
         else:
             temp = order
         if temp == constants.CONST_READ_STATE:
-            self.Response = constants.CONST_RESPONSE_STATE + str(robotState.state) + constants.CONST_RESPONSE_POSITION + str(robotState.position)
+            self.Response = constants.CONST_RESPONSE_STATE + str(robotState.state)# + constants.CONST_RESPONSE_POSITION + str(robotState.position)
             return True
         if temp == constants.CONST_READ_LIMIT_SWITCHES:
             self.Response = constants.CONST_RESPONSE_LIMIT_SWITCHES + str(robotState.limitSwitches)
@@ -170,6 +174,7 @@ class state:
     def GetFloor(self):
         return self.floorSensors
 ser = None
+label = None
 orderObject = None
 def receiveOrders(data):
     global ser
@@ -181,8 +186,8 @@ def receiveOrders(data):
     orderProperty = recieved - (orderNumber*1000)
     orderObject.ChangeOrderAndProperties(orderNumber,orderProperty)
     orderObject.previousControlOrder = dt.datetime.now()
-    rospy.loginfo("Dostalem-callback")
-    rospy.loginfo(recieved)
+    #rospy.loginfo("Dostalem-callback")
+    #rospy.loginfo(recieved)
     # orderObject.ChangeOrder(data.Order)
     # orderObject.ChangeOrderProperties(data.OrderProperty)
 
@@ -198,6 +203,9 @@ def checkTimerElapsed(lastDateTime):
 def talker():
     global ser
     global orderObject
+
+    
+
 
     orderObject = order()
     robotState = state()
@@ -217,12 +225,14 @@ def talker():
     pub = rospy.Publisher('RaspberryControlWriter',String,queue_size=10)
     rospy.init_node('talker',anonymous=True)
     rate = rospy.Rate(20) #10Hz
-    time.sleep(20)
+    #time.sleep(20)
     #pub.publish("JEDZIEMY!")
     rospy.loginfo("Jedziemy!")
     rospy.Subscriber("RaspberryControlReader", Int16, receiveOrders)
     ser.write(bytearray([constants.CONST_SERIAL_RPI_INITIALIZED]))
+    #conn.send("Jedziem")
     time.sleep(1)
+    lel = False
     bufferSerial = b""
     orderObject.lastDateTime = dt.datetime.now()
     while not rospy.is_shutdown():
@@ -235,11 +245,12 @@ def talker():
                 elif orderObject.GenerateSerialMessage(robotState) == True:
                     rospy.loginfo(orderObject.ReadSerialMessage())
                     ser.write(orderObject.ReadSerialMessage())
-            if checkTimerElapsed(orderObject.previousControlOrder) == True and robotState.state != constants.CONST_STATE_STOP:
-                rospy.loginfo("Uplynal czas")
-                ser.write(bytearray([constants.CONST_SERIAL_RPI_STOP]))
-                robotState.state = constants.CONST_STATE_STOP
+            # if checkTimerElapsed(orderObject.previousControlOrder) == True and robotState.state != constants.CONST_STATE_STOP:
+            #     rospy.loginfo("Uplynal czas")
+            #     ser.write(bytearray([constants.CONST_SERIAL_RPI_STOP]))
+            #     robotState.state = constants.CONST_STATE_STOP
             wait = ser.in_waiting
+            
             if wait > 0:
                 bufferTemp = ser.read(wait)
                 bufferSerial = bufferSerial + bufferTemp 
@@ -254,13 +265,18 @@ def talker():
                 #rospy.loginfo(function)
                 if function == constants.CONST_STATE_MOVEMENT:
                     rospy.loginfo("MOV")
+                   
                     robotState.ChangeState(constants.CONST_STATE_MOVEMENT)
                     if orderObject.GenerateResponse(robotState,constants.CONST_READ_STATE) == True:
                         pub.publish(orderObject.Response)
                     os.system('mpg321 /home/pi/Start.mp3 &')
+                elif function == constants.CONST_SERIAL_RPI_INITIALIZED:
+                    rospy.loginfo("Jestem tu")
+                    ser.write(bytearray([constants.CONST_SERIAL_RPI_INITIALIZED]))
                 elif function == constants.CONST_STATE_OBSTACLE:
                     # pub.publish("STATE OBSTACLE")
                     rospy.loginfo("OBST")
+                    
                     robotState.ChangeState(constants.CONST_STATE_OBSTACLE)
                     if orderObject.GenerateResponse(robotState,constants.CONST_READ_STATE) == True:
                         pub.publish(orderObject.Response)
@@ -271,6 +287,7 @@ def talker():
                 elif function == constants.CONST_STATE_STAIRS:
                     # pub.publish("STATE STAIRS")
                     rospy.loginfo("STAIRS")
+                    
                     robotState.ChangeState(constants.CONST_STATE_STAIRS)
                     if orderObject.GenerateResponse(robotState,constants.CONST_READ_STATE) == True:
                         pub.publish(orderObject.Response)
@@ -278,9 +295,14 @@ def talker():
                 elif function == constants.CONST_STATE_STOP:
                     # pub.publish("STATE STOP")
                     rospy.loginfo("STOP")
+                    
                     robotState.ChangeState(constants.CONST_STATE_STOP)
                     if orderObject.GenerateResponse(robotState,constants.CONST_READ_STATE) == True:
                         pub.publish(orderObject.Response)
+                    
+                    if lel == False:
+                        lel = True
+                        ser.write(bytearray([constants.CONST_SERIAL_RPI_START]))
                 elif function == constants.CONST_FLOOR:
                     while len(bufferSerial) == 0:
                         bufferTemp = ser.read(ser.in_waiting)
