@@ -80,6 +80,8 @@ byte g_SetSpeed;
 byte g_SetDirection;
 float yawOffset;
 
+byte sendBigPacket[3];
+byte sendSmallPacket[2];
 //bool workingIRsensors[7];
 
 #pragma endregion globals
@@ -131,7 +133,9 @@ void on_movement_enter(){
     // //Serial.println("on_movement_enter");
     // Serial.write(uint8_t(CONST_STATE_MOVEMENT));
     // #else
-    Serial.write({uint8_t(CONST_STATE_MOVEMENT),uint8_t(CONST_STOP_PACKET)},2);
+    sendSmallPacket[0] = uint8_t(CONST_STATE_MOVEMENT);
+    sendSmallPacket[1] = uint8_t(CONST_STOP_PACKET); 
+    Serial.write(sendSmallPacket,2);
     // #endif
     //TODO: wysyłanie informacji o zmianie stanu
 }
@@ -172,7 +176,7 @@ void on_movement(){
                     g_SetDirection = Serial.read();
                     //Serial.println(g_SetDirection);   
             }
-            byte temp = speed;
+            byte temp = readChar;
             while(temp != CONST_STOP_PACKET){
                 temp = Serial.read();
             }
@@ -188,8 +192,10 @@ void on_movement(){
         timeOfLastStateSwitch = millis();
         if (g_ekspanderSensors > 254)
             g_ekspanderSensors = 254;
-        byte writePack[3] = {uint8_t(CONST_FLOOR), g_ekspanderSensors, uint8_t(CONST_STOP_PACKET)};
-        Serial.write(writePack,3);
+        sendBigPacket[0] = uint8_t(CONST_FLOOR);
+        sendBigPacket[1] = g_ekspanderSensors;
+        sendBigPacket[2] = uint8_t(CONST_STOP_PACKET);
+        Serial.write(sendBigPacket,3);
         fsm.trigger(FSM_STAIRS);
     }
     bool obstacleDetected = false;
@@ -197,8 +203,10 @@ void on_movement(){
     if(g_limitSwitchesSensors < 15){
         if (g_limitSwitchesSensors>254)
             g_limitSwitchesSensors = 254;
-        byte writePack1[3] = {uint8_t(CONST_LIMIT), g_limitSwitchesSensors, uint8_t(CONST_STOP_PACKET)};
-        Serial.write(writePack1,3);
+        sendBigPacket[0] = uint8_t(CONST_LIMIT);
+        sendBigPacket[1] = g_limitSwitchesSensors;
+        sendBigPacket[2] = uint8_t(CONST_STOP_PACKET);
+        Serial.write(sendBigPacket,3);
         obstacleDetected = true;
     }
     // bool noFloorDetected = false;
@@ -229,8 +237,10 @@ void on_movement(){
         TaskFrontUltasond();
 
         //Send info to Rasp
-        byte writePacket1[3] = {uint8_t(CONST_OBSTACLE_SONAR_FRONT),g_FrontUltraSondDistance, uint8_t(CONST_STOP_PACKET)};
-        Serial.write(writePacket1,3);
+        sendBigPacket[0] = uint8_t(CONST_OBSTACLE_SONAR_FRONT);
+        sendBigPacket[1] = g_FrontUltraSondDistance;
+        sendBigPacket[2] = uint8_t(CONST_STOP_PACKET);
+        Serial.write(sendBigPacket,3);
 
         if(g_FrontUltraSondDistance < g_ultrasondTreshold && g_FrontUltraSondDistance != 0 && millis() - timeOfLastStateSwitch > 50){
             timeOfLastStateSwitch = millis();
@@ -243,8 +253,10 @@ void on_movement(){
         //Send info to Rasp
         if (g_RearUltraSondDistance > 254)
             g_RearUltraSondDistance = 254;
-        byte writePacket[3] = {uint8_t(CONST_OBSTACLE_SONAR_BACK),g_RearUltraSondDistance, uint8_t(CONST_STOP_PACKET)};
-        Serial.write(writePacket,3);
+        sendBigPacket[0] = uint8_t(CONST_OBSTACLE_SONAR_BACK);
+        sendBigPacket[1] = g_RearUltraSondDistance;
+        sendBigPacket[2] = uint8_t(CONST_STOP_PACKET);
+        Serial.write(sendBigPacket,3);
 
         if(g_RearUltraSondDistance < g_ultrasondTreshold && g_RearUltraSondDistance != 0 && millis() - timeOfLastStateSwitch > 50){
             timeOfLastStateSwitch = millis();
@@ -262,7 +274,9 @@ void on_movement_exit(){
 void on_initialize_enter(){
     
     serialFlush();
-    Serial.write({uint8_t(48),uint8_t(CONST_STOP_PACKET)},2);
+    sendSmallPacket[0] =uint8_t(48);
+    sendSmallPacket[1] = uint8_t(CONST_STOP_PACKET);
+    Serial.write(sendSmallPacket,2);
     //uncomment when using workingIRsensors
     // for(int i = 0;i<7;i++){
     //         workingIRsensors[i] = true;
@@ -310,12 +324,9 @@ void on_stop_enter(){
 
     stopEngines();
     detachServo();
-    #ifdef DEBUG_MODE
-    //Serial.println("on_stop_enter");
-    Serial.write({uint8_t(CONST_STATE_STOP),uint8_t(CONST_STOP_PACKET)},2);
-    #else
-    Serial.write({uint8_t(CONST_STATE_STOP),uint8_t(CONST_STOP_PACKET)},2;
-    #endif
+    sendSmallPacket[0] = uint8_t(CONST_STATE_STOP);
+    sendSmallPacket[1] = uint8_t(CONST_STOP_PACKET);
+    Serial.write(sendSmallPacket,2);
 }
 void on_stop(){
     boolean noFloorDetected = false;
@@ -354,8 +365,10 @@ void on_stop(){
         timeOfLastStateSwitch = millis();
         if(g_ekspanderSensors > 254)
             g_ekspanderSensors = 254;
-        byte writePacket[3] = {uint8_t(CONST_FLOOR), g_ekspanderSensors,uint8_t(CONST_STOP_PACKET)};
-        Serial.write(writePacket,3);
+        sendBigPacket[0] = uint8_t(CONST_FLOOR);
+        sendBigPacket[1] = g_ekspanderSensors;
+        sendBigPacket[2] = uint8_t(CONST_STOP_PACKET);
+        Serial.write(sendBigPacket,3);
         fsm.trigger(FSM_STAIRS);
     }
     bool obstacleDetected = false;
@@ -363,8 +376,10 @@ void on_stop(){
     if(g_limitSwitchesSensors < 15){
         if(g_limitSwitchesSensors > 254)
             g_limitSwitchesSensors = 254;
-        byte writePacket1[3] = {uint8_t(CONST_LIMIT), g_ekspanderSensors,uint8_t(CONST_STOP_PACKET)};
-        Serial.write(writePacket1,3);
+        sendBigPacket[0] = uint8_t(CONST_LIMIT);
+        sendBigPacket[1] = g_ekspanderSensors;
+        sendBigPacket[2] = uint8_t(CONST_STOP_PACKET);
+        Serial.write(sendBigPacket,3);
         obstacleDetected = true;
     }
     // for(int i = UpLeft;i<=BackLeft;i++){
@@ -377,8 +392,10 @@ void on_stop(){
     TaskFrontUltasond();
     TaskRearUltrasond();
     if(g_FrontUltraSondDistance < g_ultrasondTreshold ){//|| g_RearUltraSondDistance < g_ultrasondTreshold){
-        byte writePacket111[3] = {uint8_t(CONST_LIMIT), g_RearUltraSondDistance,uint8_t(CONST_STOP_PACKET)};
-        Serial.write(writePacket111,3};
+        sendBigPacket[0] = uint8_t(CONST_LIMIT);
+        sendBigPacket[1] = g_RearUltraSondDistance;
+        sendBigPacket[2] = uint8_t(CONST_STOP_PACKET);
+        Serial.write(sendBigPacket,3);
         obstacleDetected = true;}
     if(obstacleDetected == true && millis() - timeOfLastStateSwitch > 50){
         timeOfLastStateSwitch = millis();
@@ -392,7 +409,9 @@ void on_stop_exit(){
 }
 
 void on_obstacle_detected_enter(){
-    Serial.write({uint8_t(CONST_STATE_OBSTACLE),uint8_t(CONST_STOP_PACKET)},2);
+    sendSmallPacket[0] = uint8_t(CONST_STATE_OBSTACLE);
+    sendSmallPacket[1] = uint8_t(CONST_STOP_PACKET);
+    Serial.write(sendSmallPacket,2);
     stopEngines();
     detachServo();
     //Serial.println("on_obstacle_detected_enter");
@@ -481,7 +500,9 @@ void on_stairs_detected(){
 }
 void on_stairs_detected_enter(){
     stopEngines();
-    Serial.write({uint8_t(CONST_STATE_STAIRS),uint8_t(CONST_STOP_PACKET)},2);
+    sendSmallPacket[0] = uint8_t(CONST_STATE_STAIRS);
+    sendSmallPacket[1] = uint8_t(CONST_STOP_PACKET);
+    Serial.write(sendSmallPacket,2);
 
     //Serial.println("on_stairs_detected_enter");
 }
